@@ -173,6 +173,19 @@ data:
             .config(f"spark.sql.catalog.{CATALOG}", "org.apache.iceberg.spark.SparkCatalog")
             .config(f"spark.sql.catalog.{CATALOG}.type", "rest")
             .config(f"spark.sql.catalog.{CATALOG}.uri", rest_uri)
+            # warehouse is REQUIRED for the RustFS built-in table catalog:
+            # its routes are S3Tables-shaped ({prefix}/{warehouse}/namespaces/...)
+            # and the config response only returns the `prefix` override when
+            # the client sends ?warehouse=... on GET /v1/config. Without it the
+            # Java client uses unprefixed spec paths (/v1/namespaces) that
+            # match no route and fail with 501 "A header you provided implies
+            # functionality that is not implemented". Must match the
+            # generator's warehouse (GENERATOR_CATALOG_WAREHOUSE or
+            # CATALOG_NAME = 'datalake').
+            .config(
+                f"spark.sql.catalog.{CATALOG}.warehouse",
+                os.getenv("MAINT_CATALOG_WAREHOUSE") or CATALOG,
+            )
             .config(f"spark.sql.catalog.{CATALOG}.rest.sigv4-enabled", "true")
             .config(f"spark.sql.catalog.{CATALOG}.rest.signing-name", "s3")
             .config(f"spark.sql.catalog.{CATALOG}.rest.signing-region", region)
