@@ -325,7 +325,7 @@ jobs:
           import urllib.error
           import urllib.request
 
-          from botocore.auth import SigV4Auth
+          from botocore.auth import S3SigV4Auth
           from botocore.awsrequest import AWSRequest
           from botocore.credentials import Credentials
 
@@ -355,7 +355,7 @@ jobs:
           for label, path, extra in requests_matrix:
               url = base + path
               req = AWSRequest(method="GET", url=url, headers=dict(extra or {}), data=b"")
-              SigV4Auth(creds, "s3", "us-east-1").add_auth(req)
+              S3SigV4Auth(creds, "s3", "us-east-1").add_auth(req)
               sent_headers = {k.lower(): v for k, v in req.headers.items()}
               signed = sent_headers.get("authorization", "")
               signed_headers_list = ""
