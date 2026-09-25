@@ -132,6 +132,31 @@ def _clean_credential(name, raw):
     return value
 
 
+def _patch_sigv4_payload_hash_header():
+    """RustFS (s3s) rejects SigV4-signed requests that lack
+    x-amz-content-sha256 (required for S3-style SigV4), but pyiceberg's
+    SigV4Adapter only sets that header for EMPTY bodies — POSTs with a
+    JSON body go out without it and the server answers 400
+    "missing header: x-amz-content-sha256". botocore's SigV4Auth already
+    signs the true payload hash, so mirror its own payload() value into
+    the header before signing. Idempotent; only affects signed REST
+    catalog requests.
+    """
+    from botocore.auth import SigV4Auth
+
+    if getattr(SigV4Auth, "_payload_hash_header_patch", False):
+        return
+    original_add_auth = SigV4Auth.add_auth
+
+    def add_auth(self, request):
+        if "x-amz-content-sha256" not in request.headers:
+            request.headers["x-amz-content-sha256"] = self.payload(request)
+        return original_add_auth(self, request)
+
+    SigV4Auth.add_auth = add_auth
+    SigV4Auth._payload_hash_header_patch = True
+
+
 def catalog_properties():
     """Catalog connection, derived purely from env facts.
 
@@ -164,6 +189,7 @@ def catalog_properties():
     props["uri"] = uri
 
     if catalog_type == "rest":
+        _patch_sigv4_payload_hash_header()
         region = os.getenv("RUSTFS_REGION", "us-east-1")
         access_key = _clean_credential("RUSTFS_ACCESS_KEY",
                                        os.getenv("RUSTFS_ACCESS_KEY"))
