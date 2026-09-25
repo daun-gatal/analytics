@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: generator-batch
+  namespace: analytics
+  labels:
+    app.kubernetes.io/name: generator-batch
+    app.kubernetes.io/component: generator
+spec:
+  # Hourly at :15 — safely after the previous hour closes on both sources.
+  # UTC clock; pageview dump lag (~2-4h) is handled by in-script backtracking.
+  # Deliberately offset from the 02:00 maintenance CronJob.
+  schedule: "15 * * * *"
+  concurrencyPolicy: Forbid
+  backoffLimit: 1
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 1800 # 30m hard stop
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: generator-batch
+            app.kubernetes.io/component: generator
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: batch
+              # kustomization.yaml images: transformer pins newName/newTag
+              image: generator
+              imagePullPolicy: Always
+              command: ["python", "/opt/generator/batch.py"]
+              envFrom:
+                # runtime facts: RUSTFS_PROTOCOL/_ENDPOINT_HOST/_ENDPOINT_PORT/_REGION
+                - configMapRef:
+                    name: duckdb-settings
+                # S3 credentials: RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY
+                - secretRef:
+                    name: rustfs-credentials
+                # GENERATOR_* / DRY_RUN_DIR tunables
+                - configMapRef:
+                    name: generator-settings
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 1Gi
+                limits:
+                  cpu: "2"
+                  memory: 2Gi

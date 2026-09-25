@@ -1,0 +1,41 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: generator-settings
+  namespace: analytics
+data:
+  #
+  # Data generator tunables. RustFS connection facts are NOT duplicated here —
+  # the Deployment/CronJob envFrom the duckdb-settings ConfigMap (protocol,
+  # endpoint host/port, region) and the rustfs-credentials Secret, exactly
+  # like the maintenance CronJob does.
+  #
+  # GENERATOR_DRY_RUN=true skips Iceberg entirely: real sources are fetched
+  # but rows land as plain Parquet in DRY_RUN_DIR — pipeline proof with no
+  # RustFS integration required.
+  #
+  GENERATOR_DRY_RUN: 'false'
+  DRY_RUN_DIR: /tmp/dryrun
+  #
+  # Catalog identity (tables land under datalake.events.* / datalake.web.*)
+  # Namespaces (events / web) are created automatically if missing.
+  GENERATOR_CATALOG_NAME: datalake
+  #
+  # Catalog connection — leave TYPE/URI/WAREHOUSE unset for the default
+  # RustFS REST catalog (derived from duckdb-settings + rustfs-credentials).
+  # Overrides exist for testing against any other catalog, e.g. a local
+  # sqlite catalog with a file warehouse (full Iceberg write path, no RustFS).
+  GENERATOR_CATALOG_TYPE: ''
+  GENERATOR_CATALOG_URI: ''
+  GENERATOR_CATALOG_WAREHOUSE: ''
+  #
+  # Streaming: buffer before committing — small appends, few snapshots
+  GENERATOR_FLUSH_MAX_ROWS: '100'
+  GENERATOR_FLUSH_INTERVAL_S: '60'
+  # Dev/test levers: stop after N events per source / M seconds. 0 = forever
+  GENERATOR_MAX_EVENTS: '0'
+  GENERATOR_DURATION_S: '0'
+  #
+  # Batch: per-source row cap (0 = unlimited) and pageview dump backtrack
+  GENERATOR_BATCH_MAX_ROWS: '500000'
+  GENERATOR_BATCH_BACKTRACK_HOURS: '6'

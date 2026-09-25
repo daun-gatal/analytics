@@ -7,3 +7,4 @@ built.yaml
 
 # editor/OS noise
 .DS_Store
+__pycache__/

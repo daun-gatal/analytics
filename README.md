@@ -118,6 +118,7 @@ flowchart TD
 | Auth | DuckFlight PBKDF2-hashed creds + TLS, per-boot cert with `<service>.<ns>` SANs |
 | Credentials | Single GitHub Secret pair, stamped by CI into both namespaces |
 | Iceberg maintenance | CronJob `iceberg-maintenance-daily` in `analytics` at 02:00 (compact → manifests → expire snapshots → orphan cleanup) · Spark local mode · image `ghcr.io/daun-gatal/analytics/iceberg-maintenance` (public, built by CI) |
+| Data generator | `Deployment/generator-stream` (always-on: Wikimedia EventStreams SSE + Bluesky Jetstream WS → `datalake.events.*`, 60s/100-row buffered appends) + `CronJob/generator-batch` hourly at :15 (GH Archive + Wikimedia pageview dumps → `datalake.web.*`, overwrite-by-hour) · image `ghcr.io/daun-gatal/analytics/generator` (public, built by CI) |
 
 ## Structure
 
@@ -142,6 +143,16 @@ analytics/                     # repo root for manifests (this dir)
 │   ├── cronjob.yaml                 # daily: compact / manifests / expire snapshots
 │   └── image/
 │       └── Dockerfile               # apache/spark + iceberg runtime + aws bundle
+├── generator/                   # streaming + batch data generator (PyIceberg writers)
+│   ├── kustomization.yaml           # pins the CI-built ghcr.io image
+│   ├── generator-settings.yaml      # generator-settings: GENERATOR_* tunables
+│   ├── streaming.py                 # EventStreams SSE + Jetstream WS -> events.*
+│   ├── batch.py                     # GH Archive + pageview dumps -> web.*
+│   ├── Dockerfile                   # python slim + pyiceberg + pyarrow
+│   ├── stream/
+│   │   └── deployment.yaml          # Deployment/generator-stream (1 replica)
+│   └── batch/
+│       └── cronjob.yaml             # CronJob/generator-batch (hourly :15)
 ├── scripts/
 │   └── sync-duckdb-rustfs.sh  # derive duckdb connection facts from deployed rustfs
 └── .github/workflows/
@@ -200,6 +211,33 @@ Trigger a run manually (e.g. after a big backfill):
 ```bash
 kubectl create job --from=cronjob/iceberg-maintenance-daily maintenance-manual -n analytics
 kubectl logs -f job/maintenance-manual -n analytics
+```
+
+## Data generator
+
+`generator/` feeds the lake with real internet data so the Iceberg tables aren't empty. Two distinct pipelines, one small Python image (`ghcr.io/daun-gatal/analytics/generator`, PyIceberg writing through the same RustFS REST catalog with SigV4 as the maintenance job — reuses `duckdb-settings` + `rustfs-credentials`, no new secrets):
+
+| Pipeline | Workload | Internet source | Iceberg tables |
+|---|---|---|---|
+| **Streaming** | `Deployment/generator-stream` (1 replica, Recreate) | Wikimedia `EventStreams` `/v2/stream/recentchange` (SSE) · Bluesky `Jetstream` `wss://jetstream.us-east.bsky.network/subscribe` (WebSocket) | `datalake.events.wikipedia_edits` · `datalake.events.bluesky_posts` |
+| **Batch** | `CronJob/generator-batch` hourly at :15 | GH Archive `data.gharchive.org/{Y-M-D-H}.json.gz` · Wikimedia pageview dumps `dumps.wikimedia.org/other/pageviews/{Y}/{Y-M}/pageviews-*.gz` | `datalake.web.github_events` · `datalake.web.wikimedia_pageviews` |
+
+* **Streaming appends are buffered** — flush at ≥100 rows or 60s, so the firehose produces a few real commits per minute, not a snapshot per event; the daily maintenance bin-packs whatever accumulates.
+* **Batch is overwrite-by-hour** — each run fetches the previous complete hour and *replaces* that slice (`overwrite` with a `ts` predicate), so re-running a CronJob never duplicates rows. Pageview dumps publish ~2–4h behind, so the script walks back up to `GENERATOR_BATCH_BACKTRACK_HOURS` to find the newest published file.
+* **Both sources resilient** — SSE/WebSocket auto-reconnect with exponential backoff; the pod's liveness probe checks a heartbeat the main loop stamps every 5s.
+* **Namespaces and tables are auto-created** on first write (`create_namespace_if_not_exists` for `events` / `web`, then `create_table_if_not_exists`, partitioned by `day(ts)`) — no manual DDL, and re-deploys on an empty catalog self-heal; Bluesky rows keep typed columns plus the raw event JSON in a `raw` column for schema-proofing.
+* **Tunables** live in the `generator-settings` ConfigMap (`GENERATOR_FLUSH_MAX_ROWS`, `GENERATOR_FLUSH_INTERVAL_S`, `GENERATOR_BATCH_MAX_ROWS`, `GENERATOR_BATCH_BACKTRACK_HOURS`, …).
+* **Offline proof without RustFS** — two levels of it:
+  * `GENERATOR_DRY_RUN=true`: fetches the real sources but writes plain Parquet to `DRY_RUN_DIR` instead of touching any catalog (fetch/parse/shape smoke test).
+  * `GENERATOR_CATALOG_TYPE=sql GENERATOR_CATALOG_URI=sqlite:… GENERATOR_CATALOG_WAREHOUSE=file://…`: runs the **real Iceberg write path** — namespace creation, table creation, appends and overwrite-by-hour commits — against a local SQLite catalog with a file warehouse. This is how the module was validated before any RustFS integration.
+
+> **One-time setup:** like the maintenance image, the first CI push creates the `generator` GHCR package **private** — flip it to public once (GitHub → Packages → `generator` → visibility).
+
+Trigger a manual batch run:
+
+```bash
+kubectl create job --from=cronjob/generator-batch generator-manual -n analytics
+kubectl logs -f job/generator-manual -n analytics
 ```
 
 ## Prerequisites
