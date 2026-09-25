@@ -232,8 +232,13 @@ jobs:
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
                 rustfs) TARGETS=("statefulset/rustfs -n rustfs") ;;
                 generator) TARGETS=("deployment/generator-stream -n analytics") ;;
+                # maintenance has no long-running pod — its evidence lives in
+                # the cronjob status + job listings below.
+                maintenance) TARGETS=() ;;
                 *) TARGETS=("$TARGET") ;;
               esac
+              echo "→ cronjob schedules in analytics"
+              kubectl get cronjobs -n analytics || true
               for OBJ in "${TARGETS[@]}"; do
                 echo "→ kubectl logs $OBJ --tail=80"
                 kubectl logs $OBJ --tail=80 --prefix=true || true
