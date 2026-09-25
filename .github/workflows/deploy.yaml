@@ -11,6 +11,7 @@ on:
           - all
           - duckdb
           - rustfs
+          - maintenance
         default: all
       action:
         description: 'Kubectl Action'
@@ -34,7 +35,41 @@ on:
 
 
 jobs:
+  build-image:
+    # Builds the Iceberg maintenance Spark image and publishes it as a
+    # PUBLIC GHCR package — the cluster pulls it without a pull secret.
+    # Note: the very first push creates the package PRIVATE; flip it to
+    # public once (GitHub → Packages → iceberg-maintenance → visibility).
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: maintenance/image
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/iceberg-maintenance:latest
+            ghcr.io/${{ github.repository }}/iceberg-maintenance:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   execute:
+    needs: build-image
     runs-on: ubuntu-latest
     env:
       MODULE_PATH: ${{ inputs.module == 'all' && '.' || inputs.module }}
@@ -47,8 +82,8 @@ jobs:
       - name: Validate module
         run: |
           case "${MODULE_PATH}" in
-            .|duckdb|rustfs) ;;
-            *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs)" && exit 1 ;;
+            .|duckdb|rustfs|maintenance) ;;
+            *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs, maintenance)" && exit 1 ;;
           esac
 
       - uses: actions/checkout@v4
@@ -150,17 +185,21 @@ jobs:
               ;;
             restart)
               echo "▶ Rollout restart for $TARGET"
+              # Array of fully-qualified targets — each entry is passed to
+              # kubectl as ONE unit ("kind/name -n ns"), unlike the previous
+              # space-joined string that word-split into broken invocations.
               case "$TARGET" in
-                "."|all) TARGETS="deployment/duckdb -n analytics" && TARGETS="$TARGETS statefulset/rustfs -n rustfs" ;;
-                duckdb) TARGETS="deployment/duckdb -n analytics" ;;
-                rustfs) TARGETS="statefulset/rustfs -n rustfs" ;;
-                *) TARGETS="$TARGET" ;;
+                "."|all)
+                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics")
+                  ;;
+                duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
+                rustfs) TARGETS=("statefulset/rustfs -n rustfs") ;;
+                maintenance) TARGETS=("cronjob/iceberg-maintenance-daily -n analytics") ;;
+                *) TARGETS=("$TARGET") ;;
               esac
-              for OBJ in $TARGETS; do
+              for OBJ in "${TARGETS[@]}"; do
                 echo "→ kubectl rollout restart $OBJ"
                 kubectl rollout restart $OBJ
-              done
-              for OBJ in $TARGETS; do
                 echo "→ waiting for $OBJ"
                 kubectl rollout status $OBJ --timeout=180s || true
               done

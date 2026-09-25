@@ -1,0 +1,85 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: iceberg-maintenance-daily
+  namespace: analytics
+  labels:
+    app.kubernetes.io/name: iceberg-maintenance
+    app.kubernetes.io/component: maintenance
+spec:
+  # Daily full run: compact -> rewrite manifests -> expire snapshots ->
+  # remove orphan files (72h grace window).
+  # UTC clock; the RustFS/DuckDB stack is expected idle at this hour.
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  backoffLimit: 1
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 14400 # 4h hard stop
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: iceberg-maintenance
+            app.kubernetes.io/component: maintenance
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: maintenance
+              # kustomization.yaml images: transformer pins newName/newTag
+              image: iceberg-maintenance
+              imagePullPolicy: Always
+              args:
+                - --master
+                - local[2]
+                - --driver-memory
+                - 1g
+                - /opt/maintenance/maintenance.py
+              envFrom:
+                # runtime facts: RUSTFS_PROTOCOL/_ENDPOINT_HOST/_ENDPOINT_PORT/_REGION
+                - configMapRef:
+                    name: duckdb-settings
+                # S3 credentials: RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY
+                - secretRef:
+                    name: rustfs-credentials
+              env:
+                - name: MAINT_TARGET_FILE_SIZE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: maintenance-config
+                      key: MAINT_TARGET_FILE_SIZE
+                - name: MAINT_SNAPSHOT_MAX_AGE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: maintenance-config
+                      key: MAINT_SNAPSHOT_MAX_AGE
+                - name: MAINT_RETAIN_LAST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: maintenance-config
+                      key: MAINT_RETAIN_LAST
+                - name: MAINT_ORPHAN_MIN_AGE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: maintenance-config
+                      key: MAINT_ORPHAN_MIN_AGE
+              volumeMounts:
+                - name: maintenance-script
+                  mountPath: /opt/maintenance
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 1Gi
+                limits:
+                  cpu: "2"
+                  memory: 2Gi
+          volumes:
+            - name: maintenance-script
+              configMap:
+                name: maintenance-config
+                items:
+                  - key: maintenance.py
+                    path: maintenance.py
