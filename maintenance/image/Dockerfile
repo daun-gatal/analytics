@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 #
 # Iceberg maintenance image — Spark local-mode engine for the analytics
-# datalake's maintenance CronJobs (compaction, manifest rewrite, snapshot
-# expiry, orphan-file cleanup).
+# datalake's maintenance CronJob (compaction, manifest rewrite, snapshot
+# expiry).
 #
 # Built and pushed by .github/workflows/deploy.yaml (job: build-image) to:
 #   ghcr.io/daun-gatal/analytics/iceberg-maintenance

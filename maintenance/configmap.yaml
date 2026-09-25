@@ -7,15 +7,13 @@ data:
   #
   # Iceberg table maintenance for the datalake on RustFS.
   #
-  # maintenance.py runs in the iceberg-maintenance CronJob (Spark local
-  # mode) and reads ALL runtime facts from env:
+  # maintenance.py runs in the iceberg-maintenance-daily CronJob (Spark
+  # local mode) and reads ALL runtime facts from env:
   #   duckdb-settings ConfigMap   -> RUSTFS_PROTOCOL/_HOST/_PORT/_REGION
   #   rustfs-credentials Secret   -> RUSTFS_ACCESS_KEY/_SECRET_KEY
   #   maintenance-config ConfigMap -> MAINT_* tunables (keys below)
   #
-  # Modes (CronJob arg):
-  #   daily  - compact data files -> rewrite manifests -> expire snapshots
-  #   weekly - remove orphan files (long grace period, runs after expiry)
+  # Per table: compact data files -> rewrite manifests -> expire snapshots.
   #
   maintenance.py: |
     #!/usr/bin/env python3
@@ -106,8 +104,8 @@ data:
     def expire_snapshots(spark, table, max_age_seconds, retain_last):
         """Drop snapshots older than the retention window.
 
-        Files exclusive to expired snapshots become reclaimable; the weekly
-        orphan pass is what actually scans and deletes leftovers.
+        Expired snapshots are removed from metadata and the procedure
+        deletes files no longer referenced by any retained snapshot.
         """
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
         result = spark.sql(f"""
@@ -119,29 +117,7 @@ data:
         print(f"    ↺ expire: {result.asDict()}")
 
 
-    def remove_orphan_files(spark, table, min_age_seconds):
-        """Delete files in the table location that no snapshot references.
-
-        The min-age grace window protects files from writes that are still
-        in flight — never set it below the longest expected write.
-        """
-        cutoff = datetime.now(timezone.utc) - timedelta(seconds=min_age_seconds)
-        result = spark.sql(f"""
-            CALL {CATALOG}.system.remove_orphan_files(
-                table => '{table}',
-                older_than => TIMESTAMP '{ts_literal(cutoff)}'
-            )""")
-        orphans = result.collect()
-        print(f"    ↺ orphans: {len(orphans)} file(s) removed")
-        for row in orphans[:10]:
-            print(f"      - {row['file_path']}")
-
-
     def main():
-        mode = sys.argv[1] if len(sys.argv) > 1 else "daily"
-        if mode not in ("daily", "weekly", "all"):
-            fail(f"unknown mode '{mode}' (allowed: daily, weekly, all)")
-
         required = [
             "RUSTFS_PROTOCOL",
             "RUSTFS_ENDPOINT_HOST",
@@ -164,7 +140,6 @@ data:
         target_bytes = parse_bytes(os.getenv("MAINT_TARGET_FILE_SIZE"), 512 * 1024**2)
         max_age_seconds = parse_seconds(os.getenv("MAINT_SNAPSHOT_MAX_AGE"), 7 * 86400)
         retain_last = int(os.getenv("MAINT_RETAIN_LAST", "10"))
-        orphan_min_age = parse_seconds(os.getenv("MAINT_ORPHAN_MIN_AGE"), 3 * 86400)
 
         spark = (
             SparkSession.builder.appName("iceberg-maintenance")
@@ -202,7 +177,7 @@ data:
         )
 
         tables = discover_tables(spark)
-        print(f"▶ mode={mode} catalog={CATALOG} tables={len(tables)}")
+        print(f"▶ catalog={CATALOG} tables={len(tables)}")
         for table in tables:
             print(f"→ {table}")
 
@@ -216,18 +191,12 @@ data:
                 print(f"    ✗ {step_name}: {error}", file=sys.stderr)
 
         for table in tables:
-            if mode in ("daily", "all"):
-                run("compact", lambda: compact(spark, table, target_bytes))
-                run("manifests", lambda: rewrite_manifests(spark, table))
-                run(
-                    "expire",
-                    lambda: expire_snapshots(spark, table, max_age_seconds, retain_last),
-                )
-            if mode in ("weekly", "all"):
-                run(
-                    "orphans",
-                    lambda: remove_orphan_files(spark, table, orphan_min_age),
-                )
+            run("compact", lambda: compact(spark, table, target_bytes))
+            run("manifests", lambda: rewrite_manifests(spark, table))
+            run(
+                "expire",
+                lambda: expire_snapshots(spark, table, max_age_seconds, retain_last),
+            )
 
         spark.stop()
 
@@ -243,10 +212,9 @@ data:
         main()
 
   #
-  # Tunables — referenced by name from the CronJobs' env. Human-friendly
-  # units (512MB, 7d, 72h) are parsed by maintenance.py.
+  # Tunables — referenced by name from the CronJob's env. Human-friendly
+  # units (512MB, 7d) are parsed by maintenance.py.
   #
   MAINT_TARGET_FILE_SIZE: "512MB"   # bin-pack data files up to this size
   MAINT_SNAPSHOT_MAX_AGE: "7d"      # expire snapshots older than this
   MAINT_RETAIN_LAST: "10"           # always keep at least N snapshots
-  MAINT_ORPHAN_MIN_AGE: "72h"       # orphan grace window (weekly pass)

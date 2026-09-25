@@ -61,7 +61,7 @@ flowchart LR
     AUTH -. env .-> DUCK
     CREDS -. env .-> DUCK
     DUCK == "S3 API + Iceberg REST SIGV4" ==> RSVC
-    MAINT["CronJob/iceberg-maintenance<br/>daily · weekly<br/>Spark local: compaction ·<br/>manifests · expiry · orphans"]
+    MAINT["CronJob/iceberg-maintenance-daily<br/>Spark local: compaction ·<br/>manifests · snapshot expiry"]
     CREDS -. env .-> MAINT
     SETTINGS -. env .-> MAINT
     MAINT == "Iceberg REST SIGV4 + S3 FileIO" ==> RSVC
@@ -117,7 +117,7 @@ flowchart TD
 | Exposure | Tailscale: `duckdb` and `rustfs` hostnames |
 | Auth | DuckFlight PBKDF2-hashed creds + TLS, per-boot cert with `<service>.<ns>` SANs |
 | Credentials | Single GitHub Secret pair, stamped by CI into both namespaces |
-| Iceberg maintenance | 2 CronJobs in `analytics`: daily 02:00 (compact → manifests → expire snapshots), weekly Sun 04:00 (orphan cleanup) · Spark local mode · image `ghcr.io/daun-gatal/analytics/iceberg-maintenance` (public, built by CI) |
+| Iceberg maintenance | CronJob `iceberg-maintenance-daily` in `analytics` at 02:00 (compact → manifests → expire snapshots) · Spark local mode · image `ghcr.io/daun-gatal/analytics/iceberg-maintenance` (public, built by CI) |
 
 ## Structure
 
@@ -139,7 +139,7 @@ analytics/                     # repo root for manifests (this dir)
 ├── maintenance/               # Iceberg table maintenance (Spark local-mode CronJobs)
 │   ├── kustomization.yaml           # pins the CI-built ghcr.io image
 │   ├── configmap.yaml               # maintenance-config: maintenance.py + MAINT_* tunables
-│   ├── cronjob.yaml                 # daily (compact/manifests/expire) + weekly (orphans)
+│   ├── cronjob.yaml                 # daily: compact / manifests / expire snapshots
 │   └── image/
 │       └── Dockerfile               # apache/spark + iceberg runtime + aws bundle
 ├── scripts/
@@ -157,7 +157,7 @@ Everything that can be parameterized is, via env / ConfigMap / Secret:
 | ConfigMap | `analytics/duckdb-settings` | `DUCKDB_SERVICE_NAME`, `RUSTFS_PROTOCOL`, `RUSTFS_ENDPOINT_HOST/PORT`, `RUSTFS_REGION`, `DUCKFLIGHT_PG_PORT`, `DUCKFLIGHT_FLIGHT_PORT` |
 | Secret | `analytics/duckflight-auth` | DuckFlight `username`/`password` (created by CI from GitHub Secrets) |
 | Secret | `analytics` + `rustfs` `rustfs-credentials` | `RUSTFS_ACCESS_KEY`/`RUSTFS_SECRET_KEY` — same keys in both namespaces so chart and duckdb always match (created by CI from one GitHub Secret pair) |
-| ConfigMap | `analytics/maintenance-config` | `maintenance.py` (the maintenance script) + tunables `MAINT_TARGET_FILE_SIZE`, `MAINT_SNAPSHOT_MAX_AGE`, `MAINT_RETAIN_LAST`, `MAINT_ORPHAN_MIN_AGE` — human-friendly units (`512MB`, `7d`, `72h`) parsed by the script |
+| ConfigMap | `analytics/maintenance-config` | `maintenance.py` (the maintenance script) + tunables `MAINT_TARGET_FILE_SIZE`, `MAINT_SNAPSHOT_MAX_AGE`, `MAINT_RETAIN_LAST` — human-friendly units (`512MB`, `7d`) parsed by the script |
 
 Flow at pod start: the `generate-duckflight-config` init container renders `/runtime/duckflight.toml` (DuckFlight auth + TLS; SANs derived from `<service>.<namespace>`). The duckdb container runs `-init /etc/duckdb/init.sql`, which reads **all runtime facts from the container env via `getenv()`** — endpoint, region, protocol (which derives `USE_SSL`), ports, and S3 credentials. No SQL is rendered at startup; `init.sql` is the ConfigMap's plain SQL.
 
@@ -185,12 +185,11 @@ bash scripts/sync-duckdb-rustfs.sh
 | CronJob | Schedule (UTC) | What it runs, per table |
 |---|---|---|
 | `iceberg-maintenance-daily` | `0 2 * * *` | `rewrite_data_files` (bin-pack to target size) → `rewrite_manifests` → `expire_snapshots` |
-| `iceberg-maintenance-weekly` | `0 4 * * 0` | `remove_orphan_files` with a 72h grace window |
 
 * **Discovery is dynamic** — the script lists all namespaces/tables via `SHOW NAMESPACES/TABLES` on each run; no table list to maintain
 * **Per-table isolation** — one failing table doesn't block the others; the job exits non-zero if anything failed
-* **Schedules are configurable** — edit `schedule:` in `maintenance/cronjob.yaml`; operation tunables are env keys in `maintenance/configmap.yaml` (`MAINT_TARGET_FILE_SIZE`, `MAINT_SNAPSHOT_MAX_AGE`, `MAINT_RETAIN_LAST`, `MAINT_ORPHAN_MIN_AGE`)
-* **Light footprint** — `requests 500m/1Gi`, `limits 2 CPU/2Gi`, `local[2]`, runs at 02:00 when the cluster is idle; `concurrencyPolicy: Forbid` and the weekly job's 2h offset keep the two runs from overlapping
+* **Configurable** — edit `schedule:` in `maintenance/cronjob.yaml`; operation tunables are env keys in `maintenance/configmap.yaml` (`MAINT_TARGET_FILE_SIZE`, `MAINT_SNAPSHOT_MAX_AGE`, `MAINT_RETAIN_LAST`)
+* **Light footprint** — `requests 500m/1Gi`, `limits 2 CPU/2Gi`, `local[2]`, runs at 02:00 when the cluster is idle; `concurrencyPolicy: Forbid`
 
 Image: `ghcr.io/daun-gatal/analytics/iceberg-maintenance` — `apache/spark:4.0.4-scala2.13-java17-python3-ubuntu` + `iceberg-spark-runtime-4.0_2.13` + `iceberg-aws-bundle` (both 1.11.0, pinned via ARGs in `maintenance/image/Dockerfile`). The maintenance script itself lives in the ConfigMap, so tuning it never needs an image rebuild.
 
@@ -246,7 +245,7 @@ Pipeline: **build-image** (`maintenance/image/Dockerfile` → public GHCR packag
 Behavior notes:
 
 * `apply` always runs the sync script afterwards (idempotent — no restart when already aligned), so rustfs changes propagate to duckdb automatically
-* `restart` maps: `duckdb` → `deployment/duckdb -n analytics`; `rustfs` → `statefulset/rustfs -n rustfs`; `maintenance` → both `iceberg-maintenance` CronJobs; `all` → everything (targets are passed to kubectl as single `"kind/name -n ns"` units)
+* `restart` maps: `duckdb` → `deployment/duckdb -n analytics`; `rustfs` → `statefulset/rustfs -n rustfs`; `maintenance` → `iceberg-maintenance-daily`; `all` → everything (targets are passed to kubectl as single `"kind/name -n ns"` units)
 * `delete` deletes the module's rendered kustomization (`--ignore-not-found`)
 
 Required GitHub Secrets:

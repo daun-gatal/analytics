@@ -36,7 +36,6 @@ spec:
                 - --driver-memory
                 - 1g
                 - /opt/maintenance/maintenance.py
-                - daily
               envFrom:
                 # runtime facts: RUSTFS_PROTOCOL/_ENDPOINT_HOST/_ENDPOINT_PORT/_REGION
                 - configMapRef:
@@ -60,74 +59,6 @@ spec:
                     configMapKeyRef:
                       name: maintenance-config
                       key: MAINT_RETAIN_LAST
-              volumeMounts:
-                - name: maintenance-script
-                  mountPath: /opt/maintenance
-                  readOnly: true
-              resources:
-                requests:
-                  cpu: 500m
-                  memory: 1Gi
-                limits:
-                  cpu: "2"
-                  memory: 2Gi
-          volumes:
-            - name: maintenance-script
-              configMap:
-                name: maintenance-config
-                items:
-                  - key: maintenance.py
-                    path: maintenance.py
----
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: iceberg-maintenance-weekly
-  namespace: analytics
-  labels:
-    app.kubernetes.io/name: iceberg-maintenance
-    app.kubernetes.io/component: maintenance
-spec:
-  # Weekly orphan-file cleanup, 2h after the daily run so the two jobs
-  # never overlap (concurrencyPolicy is per-CronJob only).
-  schedule: "0 4 * * 0"
-  concurrencyPolicy: Forbid
-  backoffLimit: 1
-  successfulJobsHistoryLimit: 1
-  failedJobsHistoryLimit: 3
-  jobTemplate:
-    spec:
-      ttlSecondsAfterFinished: 86400
-      activeDeadlineSeconds: 14400 # 4h hard stop
-      template:
-        metadata:
-          labels:
-            app.kubernetes.io/name: iceberg-maintenance
-            app.kubernetes.io/component: maintenance
-        spec:
-          restartPolicy: Never
-          containers:
-            - name: maintenance
-              image: iceberg-maintenance
-              imagePullPolicy: Always
-              args:
-                - --master
-                - local[2]
-                - --driver-memory
-                - 1g
-                - /opt/maintenance/maintenance.py
-                - weekly
-              envFrom:
-                - configMapRef:
-                    name: duckdb-settings
-                - secretRef:
-                    name: rustfs-credentials
-              env:
-                - name: MAINT_ORPHAN_MIN_AGE
-                  valueFrom:
-                    configMapKeyRef:
-                      name: maintenance-config
-                      key: MAINT_ORPHAN_MIN_AGE
               volumeMounts:
                 - name: maintenance-script
                   mountPath: /opt/maintenance

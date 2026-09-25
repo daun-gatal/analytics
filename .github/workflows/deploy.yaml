@@ -190,13 +190,11 @@ jobs:
               # space-joined string that word-split into broken invocations.
               case "$TARGET" in
                 "."|all)
-                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics" "cronjob/iceberg-maintenance-weekly -n analytics")
+                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics")
                   ;;
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
                 rustfs) TARGETS=("statefulset/rustfs -n rustfs") ;;
-                maintenance)
-                  TARGETS=("cronjob/iceberg-maintenance-daily -n analytics" "cronjob/iceberg-maintenance-weekly -n analytics")
-                  ;;
+                maintenance) TARGETS=("cronjob/iceberg-maintenance-daily -n analytics") ;;
                 *) TARGETS=("$TARGET") ;;
               esac
               for OBJ in "${TARGETS[@]}"; do
