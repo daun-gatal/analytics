@@ -29,6 +29,46 @@ data:
     PASSWORD="${DUCKFLIGHT_PASSWORD}"
 
     #
+    # Fail fast with a clear message when env is missing/unsafe —
+    # otherwise the failure surfaces later as a cryptic
+    # "Failed to parse DuckFlight config" from duckdb.
+    #
+
+    MISSING=""
+    for VAR in \
+      DUCKFLIGHT_USER \
+      DUCKFLIGHT_PASSWORD \
+      DUCKDB_SERVICE_NAME \
+      POD_NAMESPACE \
+      RUSTFS_PROTOCOL \
+      RUSTFS_ENDPOINT_HOST \
+      RUSTFS_ENDPOINT_PORT \
+      RUSTFS_REGION \
+      DUCKFLIGHT_PG_PORT \
+      DUCKFLIGHT_FLIGHT_PORT
+    do
+      eval value="\$${VAR_NAME:-${VAR}}"
+      if [ -z "${value}" ]; then
+        MISSING="${MISSING}${MISSING:+, }${VAR}"
+      fi
+    done
+
+    if [ -n "${MISSING}" ]; then
+      echo "❌ generate-duckflight-config: empty env vars: ${MISSING}" >&2
+      echo "   - duckflight-auth Secret: username/password (from GitHub Secrets DUCKFLIGHT_USER/DUCKFLIGHT_PASSWORD)" >&2
+      echo "   - duckdb-settings ConfigMap: RUSTFS_*/DUCKFLIGHT_* (must be applied with the duckdb module)" >&2
+      exit 1
+    fi
+
+    # the username becomes a TOML table key: [users.<username>]
+    case "${USERNAME}" in
+      *[!a-zA-Z0-9_-]*)
+        echo "❌ generate-duckflight-config: DUCKFLIGHT_USER contains characters unsafe for the DuckFlight TOML (allowed: A-Za-z0-9_-)" >&2
+        exit 1
+        ;;
+    esac
+
+    #
     # DuckFlight authentication
     #
 
