@@ -1,6 +1,55 @@
-# Analytics Kubernetes Manifests
+# Analytics — a Postgres endpoint for your data lake
 
-Declarative Kustomize layout for the `analytics` stack — DuckDB (DuckFlight) and RustFS. Follows the same component-folder pattern as the `opencode` manifest repo: one file per resource, per-module `kustomization.yaml`, and a single manual CI entrypoint (`deploy.yaml`).
+Run a **modern data lake** on your own Kubernetes cluster, then query it like it's just... Postgres.
+
+* **[RustFS](https://rustfs.com) v1.0.0** — the freshly released, S3-compatible object store written in Rust. Deployed distributed (4 pods × 1 drive, Longhorn PVCs) and hosting an **Apache Iceberg REST catalog** over your data.
+* **DuckDB 1.5.5** — in-process analytical engine, `:memory:`, with the `iceberg` and `httpfs` extensions. It `ATTACH`es the RustFS catalog and reads Parquet data straight from object storage. No state to babysit.
+* **DuckFlight** — a DuckDB community extension that exposes the **PostgreSQL wire protocol** (`:5433`) and **Arrow Flight SQL** (`:31337`), with TLS and PBKDF2-hashed credentials generated per boot.
+
+The result: any Postgres client you already have — `psql`, DBeaver, Metabase, your app's ORM — connects and runs analytical SQL over the lake. No warehouse to size, no cluster to manage, no catalog to install separately.
+
+## The pitch in one query
+
+```bash
+psql -h duckdb -p 5433 -U analyst
+```
+
+```sql
+SELECT *
+FROM duckflight_pg_serve('0.0.0.0:5433', '/runtime/duckflight.toml');
+-- server up. now, from anywhere:
+
+psql -h duckdb -p 5433 -U analyst -c "
+  SELECT event, count(*)
+  FROM   datalake.metrics.events
+  WHERE  day >= today() - 7
+  GROUP  BY event;"
+```
+
+That's a distributed Iceberg table on object storage, being scanned by DuckDB's vectorized engine, over a connection that your Postgres driver already speaks.
+
+## Architecture
+
+```
+                 ┌────────────────────────────────────────────────┐
+   any PG client │                     analytics                 │
+  ─────────────▶ │  ┌──────────────────────────────┐             │
+   psql / ORM    │  │            duckdb            │             │
+                 │  │  :5433  DuckFlight PG wire   │             │
+  Flight SQL     │  │  :31337 DuckFlight FlightSQL │             │
+  ─────────────▶ │  │  :memory: + iceberg/httpfs   │             │
+                 │  └──────────────┬───────────────┘             │
+                 │                 │ S3 + Iceberg REST (SIGV4)    │
+                 │        ┌────────▼───────────────┐             │
+                 │        │         rustfs         │             │
+                 │        │ StatefulSet ×4, 10Gi/p │             │
+                 │        │ S3 API + Iceberg REST  │             │
+                 │        └────────────────────────┘             │
+                 └────────────────────────────────────────────────┘
+```
+
+* DuckDB pods are disposable — data lives on RustFS, and the HPA can scale `duckdb` 1→3 replicas on CPU/memory pressure.
+* Both services are exposed over Tailscale (`tailscale.com/expose`), so clients reach them from anywhere in the tailnet.
 
 ## Structure
 
@@ -38,8 +87,6 @@ Everything that can be parameterized is, via env / ConfigMap / Secret:
 Flow at pod start: the `generate-duckflight-config` init container renders `/runtime/duckflight.toml` (DuckFlight auth + TLS; SANs derived from `<service>.<namespace>`). The duckdb container runs `-init /etc/duckdb/init.sql`, which reads **all runtime facts from the container env via `getenv()`** — endpoint, region, protocol (which derives `USE_SSL`), ports, and S3 credentials. No SQL is rendered at startup; `init.sql` is the ConfigMap's plain SQL.
 
 One deliberate literal: `ATTACH 'datalake' AS datalake` — DuckDB's grammar does not accept expressions for the catalog path/alias, so the catalog identifier is a SQL literal while everything else (endpoint, region, protocol, credentials) is env-driven.
-
-Deliberately static (spec, not config): image tags, container/service ports, HPA thresholds, resource requests.
 
 ## RustFS → DuckDB alignment
 
@@ -118,7 +165,7 @@ Required GitHub Secrets:
 
 ## Maintenance Notes
 
-* 1 file per resource — `git log -- <file>` isolates history once this is a git repo
+* 1 file per resource — `git log -- <file>` isolates history
 * Helm chart upgrades: bump `version:` in `rustfs/kustomization.yaml`; helm values live in `rustfs/helm.yaml` only
 * Changing `drivesPerNode` on an existing RustFS StatefulSet is not allowed (chart rule) — topologies are fixed after first deploy
 * The `duckdb-settings` ConfigMap is kustomize-managed with static defaults; the sync script's patch is the only external mutation and is re-derived on every `apply`
