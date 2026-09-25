@@ -1,0 +1,252 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: maintenance-config
+  namespace: analytics
+data:
+  #
+  # Iceberg table maintenance for the datalake on RustFS.
+  #
+  # maintenance.py runs in the iceberg-maintenance CronJob (Spark local
+  # mode) and reads ALL runtime facts from env:
+  #   duckdb-settings ConfigMap   -> RUSTFS_PROTOCOL/_HOST/_PORT/_REGION
+  #   rustfs-credentials Secret   -> RUSTFS_ACCESS_KEY/_SECRET_KEY
+  #   maintenance-config ConfigMap -> MAINT_* tunables (keys below)
+  #
+  # Modes (CronJob arg):
+  #   daily  - compact data files -> rewrite manifests -> expire snapshots
+  #   weekly - remove orphan files (long grace period, runs after expiry)
+  #
+  maintenance.py: |
+    #!/usr/bin/env python3
+    """Iceberg table maintenance for the analytics datalake (RustFS)."""
+
+    import os
+    import re
+    import sys
+    from datetime import datetime, timedelta, timezone
+
+    from pyspark.sql import SparkSession
+
+    CATALOG = os.getenv("MAINT_CATALOG_NAME", "datalake")
+
+    DURATION_RE = re.compile(r"^\s*(\d+)\s*([dhms])\s*$", re.IGNORECASE)
+    DURATION_UNITS = {"d": 86400, "h": 3600, "m": 60, "s": 1}
+
+    BYTES_RE = re.compile(r"^\s*(\d+)\s*([kmgt]?i?b?)\s*$", re.IGNORECASE)
+    BYTE_UNITS = {"": 1, "k": 1024, "m": 1024**2, "g": 1024**3, "t": 1024**4}
+
+
+    def fail(message, missing=None):
+        """Fail fast with a clear message — mirror generate-config.sh style."""
+        if missing:
+            message = f"{message}: {', '.join(missing)}"
+        print(f"❌ maintenance: {message}", file=sys.stderr)
+        sys.exit(2)
+
+
+    def parse_seconds(raw, default):
+        """'7d' / '72h' / '45m' / '30s' -> seconds; falls back to default."""
+        match = DURATION_RE.match(raw or "")
+        if not match:
+            return default
+        return int(match.group(1)) * DURATION_UNITS[match.group(2).lower()]
+
+
+    def parse_bytes(raw, default):
+        """'512MB' / '1GiB' / plain int -> bytes; falls back to default."""
+        match = BYTES_RE.match(raw or "")
+        if not match:
+            return default
+        unit = match.group(2).lower().replace("i", "").replace("b", "")
+        return int(match.group(1)) * BYTE_UNITS[unit]
+
+
+    def ts_literal(moment):
+        """Spark SQL TIMESTAMP literal, e.g. TIMESTAMP '2026-09-18 02:00:00'."""
+        return moment.strftime("%Y-%m-%d %H:%M:%S")
+
+
+    def discover_tables(spark):
+        """All tables in the catalog, fully qualified as <namespace>.<table>."""
+        tables = []
+        for ns_row in spark.sql(f"SHOW NAMESPACES IN {CATALOG}").collect():
+            namespace = ".".join(ns_row["namespace"])
+            for t_row in spark.sql(f"SHOW TABLES IN {CATALOG}.{namespace}").collect():
+                tables.append(f"{namespace}.{t_row['tableName']}")
+        return tables
+
+
+    def compact(spark, table, target_bytes):
+        """Bin-pack small data files up to the target size.
+
+        partial-progress commits every few file groups so a long compaction
+        can be retried without redoing everything.
+        """
+        result = spark.sql(f"""
+            CALL {CATALOG}.system.rewrite_data_files(
+                table => '{table}',
+                options => map(
+                    'target-file-size-bytes', '{target_bytes}',
+                    'partial-progress.enabled', 'true',
+                    'partial-progress.max-commits', '5'
+                )
+            )""").first()
+        print(f"    ↺ compact: {result.asDict()}")
+
+
+    def rewrite_manifests(spark, table):
+        """Consolidate small manifests so scan planning reads fewer files."""
+        result = spark.sql(
+            f"CALL {CATALOG}.system.rewrite_manifests(table => '{table}')"
+        ).first()
+        print(f"    ↺ manifests: {result.asDict()}")
+
+
+    def expire_snapshots(spark, table, max_age_seconds, retain_last):
+        """Drop snapshots older than the retention window.
+
+        Files exclusive to expired snapshots become reclaimable; the weekly
+        orphan pass is what actually scans and deletes leftovers.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        result = spark.sql(f"""
+            CALL {CATALOG}.system.expire_snapshots(
+                table => '{table}',
+                older_than => TIMESTAMP '{ts_literal(cutoff)}',
+                retain_last => {int(retain_last)}
+            )""").first()
+        print(f"    ↺ expire: {result.asDict()}")
+
+
+    def remove_orphan_files(spark, table, min_age_seconds):
+        """Delete files in the table location that no snapshot references.
+
+        The min-age grace window protects files from writes that are still
+        in flight — never set it below the longest expected write.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=min_age_seconds)
+        result = spark.sql(f"""
+            CALL {CATALOG}.system.remove_orphan_files(
+                table => '{table}',
+                older_than => TIMESTAMP '{ts_literal(cutoff)}'
+            )""")
+        orphans = result.collect()
+        print(f"    ↺ orphans: {len(orphans)} file(s) removed")
+        for row in orphans[:10]:
+            print(f"      - {row['file_path']}")
+
+
+    def main():
+        mode = sys.argv[1] if len(sys.argv) > 1 else "daily"
+        if mode not in ("daily", "weekly", "all"):
+            fail(f"unknown mode '{mode}' (allowed: daily, weekly, all)")
+
+        required = [
+            "RUSTFS_PROTOCOL",
+            "RUSTFS_ENDPOINT_HOST",
+            "RUSTFS_ENDPOINT_PORT",
+            "RUSTFS_REGION",
+            "RUSTFS_ACCESS_KEY",
+            "RUSTFS_SECRET_KEY",
+        ]
+        missing = [name for name in required if not os.getenv(name)]
+        if missing:
+            fail("empty env vars", missing)
+
+        protocol = os.getenv("RUSTFS_PROTOCOL")
+        host = os.getenv("RUSTFS_ENDPOINT_HOST")
+        port = os.getenv("RUSTFS_ENDPOINT_PORT")
+        region = os.getenv("RUSTFS_REGION")
+        rest_uri = f"{protocol}://{host}:{port}/iceberg"
+        s3_endpoint = f"{protocol}://{host}:{port}"
+
+        target_bytes = parse_bytes(os.getenv("MAINT_TARGET_FILE_SIZE"), 512 * 1024**2)
+        max_age_seconds = parse_seconds(os.getenv("MAINT_SNAPSHOT_MAX_AGE"), 7 * 86400)
+        retain_last = int(os.getenv("MAINT_RETAIN_LAST", "10"))
+        orphan_min_age = parse_seconds(os.getenv("MAINT_ORPHAN_MIN_AGE"), 3 * 86400)
+
+        spark = (
+            SparkSession.builder.appName("iceberg-maintenance")
+            .master(os.getenv("MAINT_SPARK_MASTER", "local[2]"))
+            # CALL procedures + Iceberg SQL
+            .config(
+                "spark.sql.extensions",
+                "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
+            )
+            # REST catalog over RustFS, SigV4-signed like the DuckDB ATTACH
+            .config(f"spark.sql.catalog.{CATALOG}", "org.apache.iceberg.spark.SparkCatalog")
+            .config(f"spark.sql.catalog.{CATALOG}.type", "rest")
+            .config(f"spark.sql.catalog.{CATALOG}.uri", rest_uri)
+            .config(f"spark.sql.catalog.{CATALOG}.rest.sigv4-enabled", "true")
+            .config(f"spark.sql.catalog.{CATALOG}.rest.signing-name", "s3")
+            .config(f"spark.sql.catalog.{CATALOG}.rest.signing-region", region)
+            # S3 FileIO pointed at RustFS (endpoint override, path-style)
+            .config(
+                f"spark.sql.catalog.{CATALOG}.io-impl",
+                "org.apache.iceberg.aws.s3.S3FileIO",
+            )
+            .config(f"spark.sql.catalog.{CATALOG}.s3.endpoint", s3_endpoint)
+            .config(f"spark.sql.catalog.{CATALOG}.s3.path-style-access", "true")
+            .config(f"spark.sql.catalog.{CATALOG}.s3.region", region)
+            .config(
+                f"spark.sql.catalog.{CATALOG}.s3.access-key-id",
+                os.getenv("RUSTFS_ACCESS_KEY"),
+            )
+            .config(
+                f"spark.sql.catalog.{CATALOG}.s3.secret-access-key",
+                os.getenv("RUSTFS_SECRET_KEY"),
+            )
+            .config("spark.sql.defaultCatalog", CATALOG)
+            .getOrCreate()
+        )
+
+        tables = discover_tables(spark)
+        print(f"▶ mode={mode} catalog={CATALOG} tables={len(tables)}")
+        for table in tables:
+            print(f"→ {table}")
+
+        failures = []
+
+        def run(step_name, step):
+            try:
+                step()
+            except Exception as error:  # noqa: BLE001 — one bad table must not block the rest
+                failures.append(f"{table}/{step_name}: {error}")
+                print(f"    ✗ {step_name}: {error}", file=sys.stderr)
+
+        for table in tables:
+            if mode in ("daily", "all"):
+                run("compact", lambda: compact(spark, table, target_bytes))
+                run("manifests", lambda: rewrite_manifests(spark, table))
+                run(
+                    "expire",
+                    lambda: expire_snapshots(spark, table, max_age_seconds, retain_last),
+                )
+            if mode in ("weekly", "all"):
+                run(
+                    "orphans",
+                    lambda: remove_orphan_files(spark, table, orphan_min_age),
+                )
+
+        spark.stop()
+
+        if failures:
+            print(f"❌ maintenance: {len(failures)} step(s) failed:", file=sys.stderr)
+            for failure in failures:
+                print(f"   - {failure}", file=sys.stderr)
+            sys.exit(1)
+        print("✅ maintenance: all tables up to date")
+
+
+    if __name__ == "__main__":
+        main()
+
+  #
+  # Tunables — referenced by name from the CronJobs' env. Human-friendly
+  # units (512MB, 7d, 72h) are parsed by maintenance.py.
+  #
+  MAINT_TARGET_FILE_SIZE: "512MB"   # bin-pack data files up to this size
+  MAINT_SNAPSHOT_MAX_AGE: "7d"      # expire snapshots older than this
+  MAINT_RETAIN_LAST: "10"           # always keep at least N snapshots
+  MAINT_ORPHAN_MIN_AGE: "72h"       # orphan grace window (weekly pass)
