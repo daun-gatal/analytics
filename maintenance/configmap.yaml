@@ -13,7 +13,8 @@ data:
   #   rustfs-credentials Secret   -> RUSTFS_ACCESS_KEY/_SECRET_KEY
   #   maintenance-config ConfigMap -> MAINT_* tunables (keys below)
   #
-  # Per table: compact data files -> rewrite manifests -> expire snapshots.
+  # Per table: compact data files -> rewrite manifests -> expire snapshots
+  # -> remove orphan files (with a grace window for in-flight writes).
   #
   maintenance.py: |
     #!/usr/bin/env python3
@@ -117,6 +118,24 @@ data:
         print(f"    ↺ expire: {result.asDict()}")
 
 
+    def remove_orphan_files(spark, table, min_age_seconds):
+        """Delete files in the table location that no snapshot references.
+
+        The min-age grace window protects files from writes that are still
+        in flight — never set it below the longest expected write.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=min_age_seconds)
+        result = spark.sql(f"""
+            CALL {CATALOG}.system.remove_orphan_files(
+                table => '{table}',
+                older_than => TIMESTAMP '{ts_literal(cutoff)}'
+            )""")
+        orphans = result.collect()
+        print(f"    ↺ orphans: {len(orphans)} file(s) removed")
+        for row in orphans[:10]:
+            print(f"      - {row['file_path']}")
+
+
     def main():
         required = [
             "RUSTFS_PROTOCOL",
@@ -140,6 +159,7 @@ data:
         target_bytes = parse_bytes(os.getenv("MAINT_TARGET_FILE_SIZE"), 512 * 1024**2)
         max_age_seconds = parse_seconds(os.getenv("MAINT_SNAPSHOT_MAX_AGE"), 7 * 86400)
         retain_last = int(os.getenv("MAINT_RETAIN_LAST", "10"))
+        orphan_min_age = parse_seconds(os.getenv("MAINT_ORPHAN_MIN_AGE"), 3 * 86400)
 
         spark = (
             SparkSession.builder.appName("iceberg-maintenance")
@@ -197,6 +217,10 @@ data:
                 "expire",
                 lambda: expire_snapshots(spark, table, max_age_seconds, retain_last),
             )
+            run(
+                "orphans",
+                lambda: remove_orphan_files(spark, table, orphan_min_age),
+            )
 
         spark.stop()
 
@@ -218,3 +242,5 @@ data:
   MAINT_TARGET_FILE_SIZE: "512MB"   # bin-pack data files up to this size
   MAINT_SNAPSHOT_MAX_AGE: "7d"      # expire snapshots older than this
   MAINT_RETAIN_LAST: "10"           # always keep at least N snapshots
+  MAINT_ORPHAN_MIN_AGE: "72h"       # orphan grace window (files newer than
+                                    # this are never deleted, even if unreferenced)
