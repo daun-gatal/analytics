@@ -70,6 +70,24 @@ spec:
                     configMapKeyRef:
                       name: maintenance-config
                       key: MAINT_ORPHAN_MIN_AGE
+                # Standard AWS SDK env vars: the SDK credential chain always
+                # checks these last-resort providers, guaranteeing SigV4
+                # signing works even if catalog property plumbing misses.
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: rustfs-credentials
+                      key: RUSTFS_ACCESS_KEY
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: rustfs-credentials
+                      key: RUSTFS_SECRET_KEY
+                - name: AWS_REGION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: duckdb-settings
+                      key: RUSTFS_REGION
               volumeMounts:
                 - name: maintenance-script
                   mountPath: /opt/maintenance
