@@ -241,8 +241,8 @@ jobs:
               echo "→ cronjob schedules in analytics"
               kubectl get cronjobs -n analytics || true
               for OBJ in "${TARGETS[@]}"; do
-                echo "→ kubectl logs $OBJ --tail=80"
-                kubectl logs $OBJ --tail=80 --prefix=true || true
+                echo "→ kubectl logs $OBJ --tail=400"
+                kubectl logs $OBJ --tail=400 --prefix=true || true
               done
               echo "→ recent jobs in analytics (last 4)"
               kubectl get jobs -n analytics --sort-by=.metadata.creationTimestamp | tail -4 || true
