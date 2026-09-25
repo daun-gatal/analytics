@@ -166,10 +166,19 @@ def catalog_properties():
         base = uri.rsplit("/iceberg", 1)[0]
         props.update({
             "s3.endpoint": base,
+            # s3.* feeds the S3 FileIO data plane (Parquet reads/writes)
             "s3.access-key-id": access_key,
             "s3.secret-access-key": secret_key,
             "s3.region": region,
             "s3.path-style-access": "true",
+            # client.* feeds the boto3 session that SIGV4-signs the REST
+            # catalog requests — a SEPARATE set of properties from s3.*!
+            # Missing client.* makes botocore sign with fallback credentials
+            # and RustFS rejects the resulting header with
+            # 400 "invalid header: authorization".
+            "client.access-key-id": access_key,
+            "client.secret-access-key": secret_key,
+            "client.region": region,
             "rest.sigv4-enabled": "true",
             "rest.signing-region": region,
             "rest.signing-name": "s3",
