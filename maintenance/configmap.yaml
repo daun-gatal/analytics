@@ -222,6 +222,18 @@ data:
             .getOrCreate()
         )
 
+        # Diagnostics: show what catalog conf actually reached Spark so
+        # credential/signing plumbing issues are visible in job logs.
+        for conf_key in sorted(spark.conf.getAll()):
+            if CATALOG in conf_key:
+                conf_value = spark.conf.get(conf_key)
+                if "access-key" in conf_key or "secret" in conf_key:
+                    conf_value = f"<len {len(conf_value)}>"
+                print(f"DEBUG spark conf {conf_key}={conf_value}")
+        for env_key in ("RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"):
+            env_value = os.getenv(env_key)
+            print(f"DEBUG env {env_key} len={len(env_value) if env_value else 0}")
+
         tables = discover_tables(spark)
         print(f"▶ catalog={CATALOG} tables={len(tables)}")
         for table in tables:
