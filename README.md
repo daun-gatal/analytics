@@ -275,8 +275,8 @@ kubectl apply -k duckdb/
 
 Manual dispatch (also `workflow_call`). Inputs:
 
-* `module`: `all` (root kustomization), `duckdb`, `rustfs`, `maintenance`
-* `action`: `apply` | `diff` | `delete` | `dry-run` | `restart`
+* `module`: `all` (root kustomization), `duckdb`, `rustfs`, `maintenance`, `generator`
+* `action`: `apply` | `diff` | `delete` | `dry-run` | `restart` | `logs` | `probe`
 
 Pipeline: **build-image** (`maintenance/image/Dockerfile` → public GHCR package, GHA-cached) → **execute**: validate module → checkout → kubectl v1.30 → helm v3.14 → Tailscale login (`tag:git`) → write kubeconfig from the `KUBECONFIG` secret → ensure namespaces → create secrets from GitHub Secrets → `kubectl kustomize --enable-helm` build → execute action (rendered manifests are applied with `apply -f`, since `kubectl apply -k` cannot inflate helm charts).
 
@@ -285,6 +285,8 @@ Behavior notes:
 * `apply` always runs the sync script afterwards (idempotent — no restart when already aligned), so rustfs changes propagate to duckdb automatically
 * `restart` maps: `duckdb` → `deployment/duckdb -n analytics`; `rustfs` → `statefulset/rustfs -n rustfs`; `maintenance` → `iceberg-maintenance-daily`; `all` → everything (targets are passed to kubectl as single `"kind/name -n ns"` units)
 * `delete` deletes the module's rendered kustomization (`--ignore-not-found`)
+* `logs` dumps recent pod logs for the module plus the two newest CronJob jobs in `analytics` — read-only cluster diagnosis from CI
+* `probe` (generator) runs a read-only diagnostic inside the generator-stream pod: credential shape (never values), resolved package inventory, a real `load_iceberg_catalog()` attempt with full traceback, and a signed-request matrix against the live catalog endpoint
 
 Required GitHub Secrets:
 
