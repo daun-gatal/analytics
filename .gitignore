@@ -1,0 +1,9 @@
+# kustomize helm chart inflation cache (created by `kubectl kustomize --enable-helm`)
+rustfs/charts/
+
+# local build outputs
+built.yaml
+*.built.yaml
+
+# editor/OS noise
+.DS_Store

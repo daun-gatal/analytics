@@ -1,0 +1,20 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: duckdb
+  namespace: analytics
+  annotations:
+    tailscale.com/expose: 'true'
+    tailscale.com/hostname: duckdb
+spec:
+  ports:
+    - name: postgres
+      protocol: TCP
+      port: 5433
+      targetPort: postgres
+    - name: flight
+      protocol: TCP
+      port: 31337
+      targetPort: flight
+  selector:
+    app: duckdb

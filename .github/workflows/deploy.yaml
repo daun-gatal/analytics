@@ -1,0 +1,171 @@
+name: Deploy Analytics
+
+on:
+  workflow_dispatch:
+    inputs:
+      module:
+        description: 'Module to operate on'
+        required: true
+        type: choice
+        options:
+          - all
+          - duckdb
+          - rustfs
+        default: all
+      action:
+        description: 'Kubectl Action'
+        required: true
+        type: choice
+        default: diff
+        options:
+          - apply
+          - diff
+          - delete
+          - dry-run
+          - restart
+  workflow_call:
+    inputs:
+      module:
+        required: true
+        type: string
+      action:
+        required: true
+        type: string
+
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    env:
+      MODULE_PATH: ${{ inputs.module == 'all' && '.' || inputs.module }}
+      K8S_ACTION: ${{ inputs.action }}
+      RUSTFS_ACCESS_KEY: ${{ secrets.RUSTFS_ACCESS_KEY }}
+      RUSTFS_SECRET_KEY: ${{ secrets.RUSTFS_SECRET_KEY }}
+      DUCKFLIGHT_USER: ${{ secrets.DUCKFLIGHT_USER }}
+      DUCKFLIGHT_PASSWORD: ${{ secrets.DUCKFLIGHT_PASSWORD }}
+    steps:
+      - name: Validate module
+        run: |
+          case "${MODULE_PATH}" in
+            .|duckdb|rustfs) ;;
+            *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs)" && exit 1 ;;
+          esac
+
+      - uses: actions/checkout@v4
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Setup Helm
+        # required: kubectl kustomize delegates helmCharts inflation to the helm binary
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Setup Tailscale
+        id: tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TAILSCALE_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          tags: tag:git
+
+      - name: Write Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          # use printf to preserve multiline YAML exactly
+          printf '%s' "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          if ! grep -q "server:" ~/.kube/config; then
+            echo "❌ KUBECONFIG secret empty or invalid — check GitHub Secrets KUBECONFIG"
+            ls -lh ~/.kube/config
+            wc -l ~/.kube/config || true
+            exit 1
+          fi
+          echo "Kubeconfig server:"
+          grep -E "server:" ~/.kube/config || true
+          # export for this and next steps
+          echo "KUBECONFIG=$HOME/.kube/config" >> $GITHUB_ENV
+          export KUBECONFIG=$HOME/.kube/config
+          kubectl cluster-info || true
+          kubectl get ns analytics || echo "Namespace analytics not found (will be created if namespace.yaml included)"
+
+      - name: Ensure Namespaces
+        run: |
+          for NS in analytics rustfs; do
+            echo "→ ensuring namespace/$NS"
+            kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
+          done
+
+      - name: Create Secrets from GitHub Secrets
+        run: |
+          kubectl create secret generic rustfs-credentials -n rustfs \
+            --from-literal=RUSTFS_ACCESS_KEY='${RUSTFS_ACCESS_KEY}' \
+            --from-literal=RUSTFS_SECRET_KEY='${RUSTFS_SECRET_KEY}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic rustfs-credentials -n analytics \
+            --from-literal=RUSTFS_ACCESS_KEY='${RUSTFS_ACCESS_KEY}' \
+            --from-literal=RUSTFS_SECRET_KEY='${RUSTFS_SECRET_KEY}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic duckflight-auth -n analytics \
+            --from-literal=username='${DUCKFLIGHT_USER}' \
+            --from-literal=password='${DUCKFLIGHT_PASSWORD}' \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Kustomize Build
+        run: |
+          echo "▶ Building ${MODULE_PATH}"
+          # --enable-helm is required: rustfs/ inflates the rustfs helm chart via the helm binary
+          kubectl kustomize --enable-helm "${MODULE_PATH}" > /tmp/built.yaml
+          echo "Built $(grep -c "^kind:" /tmp/built.yaml) resources"
+          head -n 80 /tmp/built.yaml
+
+      - name: Execute Action
+        run: |
+          set -e
+          TARGET="${MODULE_PATH}"
+          echo "Target: $TARGET  Action: $K8S_ACTION"
+          case "${K8S_ACTION}" in
+            apply)
+              echo "▶ Applying $TARGET"
+              kubectl apply -f /tmp/built.yaml
+              echo "▶ Syncing duckdb with deployed rustfs"
+              bash scripts/sync-duckdb-rustfs.sh
+              ;;
+            diff)
+              echo "▶ Diff $TARGET (like terraform refresh)"
+              # diff exits 1 when changes exist — don't fail job
+              kubectl diff -f /tmp/built.yaml || true
+              ;;
+            dry-run)
+              echo "▶ Dry-run client+server $TARGET"
+              kubectl apply --dry-run=client -f /tmp/built.yaml
+              kubectl apply --dry-run=server -f /tmp/built.yaml || true
+              ;;
+            delete)
+              echo "▶ Deleting $TARGET (reverse order: rustfs -> duckdb -> namespace)"
+              kubectl delete -f /tmp/built.yaml --ignore-not-found=true --wait=true
+              ;;
+            restart)
+              echo "▶ Rollout restart for $TARGET"
+              case "$TARGET" in
+                "."|all) TARGETS="deployment/duckdb -n analytics" && TARGETS="$TARGETS statefulset/rustfs -n rustfs" ;;
+                duckdb) TARGETS="deployment/duckdb -n analytics" ;;
+                rustfs) TARGETS="statefulset/rustfs -n rustfs" ;;
+                *) TARGETS="$TARGET" ;;
+              esac
+              for OBJ in $TARGETS; do
+                echo "→ kubectl rollout restart $OBJ"
+                kubectl rollout restart $OBJ
+              done
+              for OBJ in $TARGETS; do
+                echo "→ waiting for $OBJ"
+                kubectl rollout status $OBJ --timeout=180s || true
+              done
+              echo "▶ Syncing duckdb with deployed rustfs"
+              bash scripts/sync-duckdb-rustfs.sh
+              kubectl get pods -n analytics
+              ;;
+          esac

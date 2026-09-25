@@ -1,0 +1,98 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: duckdb
+  namespace: analytics
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: duckdb
+  template:
+    metadata:
+      labels:
+        app: duckdb
+    spec:
+      volumes:
+        - name: runtime
+          emptyDir:
+            medium: Memory
+        - name: duckdb-config
+          configMap:
+            name: duckdb-config
+            defaultMode: 493
+      initContainers:
+        - name: generate-duckflight-config
+          image: alpine:3.22
+          command:
+            - /bin/sh
+            - /config/generate-config.sh
+          envFrom:
+            - configMapRef:
+                name: duckdb-settings
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: DUCKFLIGHT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: duckflight-auth
+                  key: username
+            - name: DUCKFLIGHT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: duckflight-auth
+                  key: password
+          resources: {}
+          volumeMounts:
+            - name: runtime
+              mountPath: /runtime
+            - name: duckdb-config
+              readOnly: true
+              mountPath: /config
+      containers:
+        - name: duckdb
+          image: duckdb/duckdb:1.5.5
+          command:
+            - /duckdb
+          args:
+            - ':memory:'
+            - '-init'
+            - /etc/duckdb/init.sql
+          ports:
+            - name: postgres
+              containerPort: 5433
+              protocol: TCP
+            - name: flight
+              containerPort: 31337
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: duckdb-settings
+          env:
+            - name: RUSTFS_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-credentials
+                  key: RUSTFS_ACCESS_KEY
+            - name: RUSTFS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-credentials
+                  key: RUSTFS_SECRET_KEY
+          resources:
+            requests:
+              cpu: '1'
+              memory: 2Gi
+          volumeMounts:
+            - name: runtime
+              readOnly: true
+              mountPath: /runtime
+            - name: duckdb-config
+              readOnly: true
+              mountPath: /etc/duckdb
+          stdin: true
+      restartPolicy: Always
+  revisionHistoryLimit: 0

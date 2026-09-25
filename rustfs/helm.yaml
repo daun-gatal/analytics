@@ -1,0 +1,44 @@
+# RustFS — distributed 4 pods x 1 drive, single-node k3s, Tailscale-exposed
+mode:
+  standalone:
+    enabled: false
+  distributed:
+    enabled: true
+
+replicaCount: 4
+drivesPerNode: 1            # explicit! null would infer 4 with replicaCount=4
+
+secret:
+  existingSecret: rustfs-credentials
+
+storageclass:
+  name: longhorn
+  dataStorageSize: 10Gi     # per PVC, 4 data PVCs = 40Gi raw
+  logStorageSize: 1Gi
+
+affinity:
+  podAntiAffinity:
+    enabled: false          # REQUIRED: default true would block scheduling on one node
+
+ingress:
+  enabled: false            # REQUIRED: default true would render an nginx Ingress
+
+service:
+  type: ClusterIP
+  annotations:
+    tailscale.com/expose: "true"   # Tailscale operator → per-port HTTPS hostnames
+    tailscale.com/hostname: "rustfs"
+  console:
+    port: 80
+
+config:
+  rustfs:
+    console_address: ":80"
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: 1Gi
+
+localEndpointHost:
+  autoInject: true

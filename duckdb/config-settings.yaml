@@ -1,0 +1,21 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: duckdb-settings
+  namespace: analytics
+data:
+  # Service identity used to derive TLS SANs (CN = <service>.<ns>.svc.cluster.local)
+  DUCKDB_SERVICE_NAME: duckdb
+  #
+  # RustFS connection facts — read by duckdb at SQL runtime via getenv().
+  # Defaults point at the chart's standard install (release `rustfs`, ns `rustfs`).
+  # scripts/sync-duckdb-rustfs.sh rewrites HOST/PORT after any rustfs deployment
+  # so the two modules never drift.
+  RUSTFS_PROTOCOL: http
+  RUSTFS_ENDPOINT_HOST: rustfs-svc.rustfs.svc.cluster.local
+  RUSTFS_ENDPOINT_PORT: '9000'
+  RUSTFS_REGION: us-east-1
+  #
+  # DuckFlight endpoints (must match the ports declared in service.yaml)
+  DUCKFLIGHT_PG_PORT: '5433'
+  DUCKFLIGHT_FLIGHT_PORT: '31337'

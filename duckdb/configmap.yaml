@@ -1,0 +1,172 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: duckdb-config
+  namespace: analytics
+data:
+  #
+  # Rendered at pod start by the init container:
+  #   /runtime/duckflight.toml  (auth + TLS)
+  #
+  # init.sql reads its runtime facts directly from the container env via
+  # getenv() — no SQL rendering step.
+  #
+  # All values come from env:
+  #   duckdb-settings ConfigMap (envFrom) → runtime facts
+  #   duckflight-auth Secret           → DuckFlight credentials
+  #   rustfs-credentials Secret        → S3 credentials
+  #   POD_NAMESPACE (fieldRef)         → TLS SAN derivation
+  #
+  generate-config.sh: |
+    #!/bin/sh
+    set -eu
+
+    apk add --no-cache openssl
+
+    mkdir -p /runtime/tls
+
+    USERNAME="${DUCKFLIGHT_USER}"
+    PASSWORD="${DUCKFLIGHT_PASSWORD}"
+
+    #
+    # DuckFlight authentication
+    #
+
+    SALT_HEX="$(openssl rand -hex 16)"
+
+    if [ "${#SALT_HEX}" -ne 32 ]; then
+      echo "ERROR: generated salt is ${#SALT_HEX} hex chars, expected 32" >&2
+      exit 1
+    fi
+
+    HASH_HEX="$(
+      openssl kdf \
+        -keylen 32 \
+        -kdfopt digest:SHA256 \
+        -kdfopt pass:"${PASSWORD}" \
+        -kdfopt hexsalt:"${SALT_HEX}" \
+        -kdfopt iter:10000 \
+        PBKDF2 |
+      tr -d '[:space:]' |
+      tr -d ':' |
+      tr '[:upper:]' '[:lower:]'
+    )"
+
+    if [ "${#HASH_HEX}" -ne 64 ]; then
+      echo "ERROR: derived password hash is ${#HASH_HEX} hex chars, expected 64" >&2
+      exit 1
+    fi
+
+    SALT_ARRAY=""
+
+    i=0
+    while [ "$i" -lt 32 ]; do
+      BYTE_HEX="$(printf '%s' "$SALT_HEX" | cut -c $((i + 1))-$((i + 2)))"
+      BYTE_DEC="$(awk -v h="${BYTE_HEX}" 'BEGIN { printf "%d", "0x" h }')"
+
+      if [ -z "$SALT_ARRAY" ]; then
+        SALT_ARRAY="$BYTE_DEC"
+      else
+        SALT_ARRAY="${SALT_ARRAY}, ${BYTE_DEC}"
+      fi
+
+      i=$((i + 2))
+    done
+
+    #
+    # TLS — SANs derived from <service>.<namespace>
+    #
+
+    NS_DOMAIN="${DUCKDB_SERVICE_NAME}.${POD_NAMESPACE}"
+    CN="${NS_DOMAIN}.svc.cluster.local"
+    SAN="DNS:${DUCKDB_SERVICE_NAME},DNS:${NS_DOMAIN},DNS:${NS_DOMAIN}.svc,DNS:${CN}"
+
+    openssl req \
+      -x509 \
+      -nodes \
+      -newkey rsa:4096 \
+      -days 365 \
+      -keyout /runtime/tls/server.key \
+      -out /runtime/tls/server.crt \
+      -subj "/CN=${CN}" \
+      -addext "subjectAltName=${SAN}"
+
+    chmod 600 /runtime/tls/server.key
+    chmod 644 /runtime/tls/server.crt
+
+    #
+    # DuckFlight configuration
+    #
+
+    cat > /runtime/duckflight.toml <<EOF
+    [users.${USERNAME}]
+    password_hash = "${HASH_HEX}"
+    salt = [${SALT_ARRAY}]
+    iterations = 10000
+
+    [tls]
+    cert = "/runtime/tls/server.crt"
+    key = "/runtime/tls/server.key"
+    EOF
+
+    chmod 600 /runtime/duckflight.toml
+
+  init.sql: |
+    INSTALL httpfs;
+    INSTALL iceberg;
+    INSTALL duckflight FROM community;
+
+    LOAD httpfs;
+    LOAD iceberg;
+    LOAD duckflight;
+
+    --
+    -- RustFS S3 credentials — all values read from the container env
+    --
+    CREATE SECRET rustfs_s3 (
+        TYPE s3,
+        KEY_ID getenv('RUSTFS_ACCESS_KEY'),
+        SECRET getenv('RUSTFS_SECRET_KEY'),
+        REGION getenv('RUSTFS_REGION'),
+        ENDPOINT getenv('RUSTFS_ENDPOINT_HOST') || ':' || getenv('RUSTFS_ENDPOINT_PORT'),
+        URL_STYLE 'path',
+        USE_SSL getenv('RUSTFS_PROTOCOL') = 'https'
+    );
+
+    -- RustFS Iceberg REST catalog
+    --
+    -- DuckDB grammar limitation: the catalog path ('datalake') and its alias
+    -- must be SQL literals — they cannot read env. Everything else is
+    -- env-driven; the endpoint is derived from the deployed rustfs Service.
+    ATTACH 'datalake' AS datalake (
+        TYPE ICEBERG,
+        ENDPOINT getenv('RUSTFS_PROTOCOL') || '://' ||
+                  getenv('RUSTFS_ENDPOINT_HOST') || ':' ||
+                  getenv('RUSTFS_ENDPOINT_PORT') || '/iceberg',
+        AUTHORIZATION_TYPE 'SIGV4',
+        SIGV4_SERVICE 's3',
+        SIGV4_REGION getenv('RUSTFS_REGION'),
+        SECRET rustfs_s3,
+        ACCESS_DELEGATION_MODE 'none',
+        SUPPORT_NESTED_NAMESPACES true
+    );
+
+    --
+    -- DuckFlight PostgreSQL endpoint
+    --
+    SELECT *
+    FROM duckflight_pg_serve(
+        '0.0.0.0:' || getenv('DUCKFLIGHT_PG_PORT'),
+        '/runtime/duckflight.toml'
+    );
+
+    --
+    -- DuckFlight Flight SQL endpoint
+    --
+    SELECT *
+    FROM duckflight_flight_serve(
+        '0.0.0.0:' || getenv('DUCKFLIGHT_FLIGHT_PORT'),
+        '/runtime/duckflight.toml'
+    );
+
+    SELECT 1;
