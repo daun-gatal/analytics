@@ -53,24 +53,33 @@ USER_AGENT = "analytics-generator/1.0 (datalake demo; k8s CronJob/Deployment)"
 
 PA_TS = pa.timestamp("us", tz="UTC")
 
+def _field(name, dtype, nullable=False):
+    """pa.field with explicit nullability — pyiceberg checks that the Arrow
+    schema matches the Iceberg schema field-by-field, including required."""
+    return pa.field(name, dtype, nullable=nullable)
+
+
+S = pa.string()
+
+
+def _schema(*fields):
+    return pa.schema(fields)
+
+
 ARROW_SCHEMAS = {
-    "github_events": pa.schema(
-        [
-            ("event_ts", PA_TS),
-            ("event_type", pa.string()),
-            ("actor_login", pa.string()),
-            ("repo_name", pa.string()),
-            ("action", pa.string()),
-            ("push_size", pa.int64()),
-        ]
+    "github_events": _schema(
+        _field("event_ts", PA_TS),
+        _field("event_type", S),
+        pa.field("actor_login", S),
+        pa.field("repo_name", S),
+        pa.field("action", S),
+        pa.field("push_size", pa.int64()),
     ),
-    "wikimedia_pageviews": pa.schema(
-        [
-            ("view_ts", PA_TS),
-            ("project", pa.string()),
-            ("page_title", pa.string()),
-            ("views", pa.int64()),
-        ]
+    "wikimedia_pageviews": _schema(
+        _field("view_ts", PA_TS),
+        _field("project", S),
+        _field("page_title", S),
+        _field("views", pa.int64()),
     ),
 }
 
@@ -87,48 +96,39 @@ def fail(message, missing=None):
     sys.exit(2)
 
 
-def load_table(table_name):
-    """REST catalog on RustFS with SigV4, derived purely from env facts."""
-    protocol = os.getenv("RUSTFS_PROTOCOL", "http")
-    host = os.getenv("RUSTFS_ENDPOINT_HOST")
-    port = os.getenv("RUSTFS_ENDPOINT_PORT", "9000")
-    region = os.getenv("RUSTFS_REGION", "us-east-1")
-    access_key = os.getenv("RUSTFS_ACCESS_KEY")
-    secret_key = os.getenv("RUSTFS_SECRET_KEY")
-    if not host:
-        fail("RUSTFS_ENDPOINT_HOST is not set (envFrom duckdb-settings)")
-    if not access_key or not secret_key:
-        fail("RUSTFS credentials not set (envFrom rustfs-credentials)")
+def catalog_properties():
+    """Catalog connection, derived purely from env facts.
 
-    from pyiceberg.catalog import load_catalog
-    from pyiceberg.partitioning import PartitionField, PartitionSpec
-    from pyiceberg.schema import Schema
-    from pyiceberg.transforms import DayTransform
-    from pyiceberg.types import LongType, NestedField, StringType, TimestampType
-
-    base = f"{protocol}://{host}:{port}"
-    schemas = {
-        "github_events": Schema(
-            NestedField(1, "event_ts", TimestampType(), required=True),
-            NestedField(2, "event_type", StringType(), required=True),
-            NestedField(3, "actor_login", StringType(), required=False),
-            NestedField(4, "repo_name", StringType(), required=False),
-            NestedField(5, "action", StringType(), required=False),
-            NestedField(6, "push_size", LongType(), required=False),
-        ),
-        "wikimedia_pageviews": Schema(
-            NestedField(1, "view_ts", TimestampType(), required=True),
-            NestedField(2, "project", StringType(), required=True),
-            NestedField(3, "page_title", StringType(), required=True),
-            NestedField(4, "views", LongType(), required=True),
-        ),
+    Defaults build the RustFS REST catalog from duckdb-settings facts
+    (RUSTFS_PROTOCOL/_ENDPOINT_HOST/_ENDPOINT_PORT/_REGION) + rustfs-credentials.
+    GENERATOR_CATALOG_TYPE/URI/WAREHOUSE override everything for testing
+    against any other catalog (e.g. a local sqlite catalog with a file
+    warehouse — the full Iceberg write path with no RustFS at all).
+    """
+    catalog_type = os.getenv("GENERATOR_CATALOG_TYPE", "rest")
+    props = {
+        "type": catalog_type,
+        "warehouse": os.getenv("GENERATOR_CATALOG_WAREHOUSE", CATALOG_NAME),
     }
-    catalog = load_catalog(
-        CATALOG_NAME,
-        **{
-            "type": "rest",
-            "uri": f"{base}/iceberg",
-            "warehouse": CATALOG_NAME,
+    uri = os.getenv("GENERATOR_CATALOG_URI")
+    if not uri:
+        # derive the REST endpoint from the shared duckdb-settings facts
+        protocol = os.getenv("RUSTFS_PROTOCOL", "http")
+        host = os.getenv("RUSTFS_ENDPOINT_HOST")
+        port = os.getenv("RUSTFS_ENDPOINT_PORT", "9000")
+        if not host:
+            fail("RUSTFS_ENDPOINT_HOST is not set (envFrom duckdb-settings)")
+        uri = f"{protocol}://{host}:{port}/iceberg"
+    props["uri"] = uri
+
+    if catalog_type == "rest":
+        region = os.getenv("RUSTFS_REGION", "us-east-1")
+        access_key = os.getenv("RUSTFS_ACCESS_KEY")
+        secret_key = os.getenv("RUSTFS_SECRET_KEY")
+        if not access_key or not secret_key:
+            fail("RUSTFS credentials not set (envFrom rustfs-credentials)")
+        base = uri.rsplit("/iceberg", 1)[0]
+        props.update({
             "s3.endpoint": base,
             "s3.access-key-id": access_key,
             "s3.secret-access-key": secret_key,
@@ -137,10 +137,55 @@ def load_table(table_name):
             "rest.sigv4-enabled": "true",
             "rest.signing-region": region,
             "rest.signing-name": "s3",
-        },
+        })
+    return props
+
+
+def ensure_namespace(catalog, identifier):
+    """Create the namespace (db/schema) if missing — e.g. web / events.
+
+    create_namespace_if_not_exists is idempotent, so every run can call it
+    safely before create_table_if_not_exists.
+    """
+    namespace = identifier.split(".")[0]
+    catalog.create_namespace_if_not_exists(namespace)
+
+
+def load_table(table_name):
+    """Open (or create) the web.<table> Iceberg table."""
+
+    from pyiceberg.catalog import load_catalog
+    from pyiceberg.partitioning import PartitionField, PartitionSpec
+    from pyiceberg.schema import Schema
+    from pyiceberg.transforms import DayTransform
+    from pyiceberg.types import (
+        LongType,
+        NestedField,
+        StringType,
+        TimestamptzType,
     )
+
+    schemas = {
+        "github_events": Schema(
+            NestedField(1, "event_ts", TimestamptzType(), required=True),
+            NestedField(2, "event_type", StringType(), required=True),
+            NestedField(3, "actor_login", StringType(), required=False),
+            NestedField(4, "repo_name", StringType(), required=False),
+            NestedField(5, "action", StringType(), required=False),
+            NestedField(6, "push_size", LongType(), required=False),
+        ),
+        "wikimedia_pageviews": Schema(
+            NestedField(1, "view_ts", TimestamptzType(), required=True),
+            NestedField(2, "project", StringType(), required=True),
+            NestedField(3, "page_title", StringType(), required=True),
+            NestedField(4, "views", LongType(), required=True),
+        ),
+    }
+    catalog = load_catalog(CATALOG_NAME, **catalog_properties())
+    identifier = f"web.{table_name}"
+    ensure_namespace(catalog, identifier)
     return catalog.create_table_if_not_exists(
-        f"web.{table_name}",
+        identifier,
         schema=schemas[table_name],
         partition_spec=PartitionSpec(
             PartitionField(source_id=1, field_id=1000,

@@ -60,30 +60,40 @@ TABLES = ("wikipedia_edits", "bluesky_posts")
 
 PA_TS = pa.timestamp("us", tz="UTC")
 
+def _field(name, dtype, nullable=False):
+    """pa.field with explicit nullability — pyiceberg checks that the Arrow
+    schema matches the Iceberg schema field-by-field, including required."""
+    return pa.field(name, dtype, nullable=nullable)
+
+
+TS_F = _field("event_ts", PA_TS)
+S = pa.string()
+
+
+def _schema(*fields):
+    return pa.schema(fields)
+
+
 # pyarrow mirror of the Iceberg schemas below (pyiceberg accepts these as-is).
 ARROW_SCHEMAS = {
-    "wikipedia_edits": pa.schema(
-        [
-            ("event_ts", PA_TS),
-            ("wiki_db", pa.string()),
-            ("event_type", pa.string()),
-            ("title", pa.string()),
-            ("editor", pa.string()),
-            ("is_bot", pa.bool_()),
-            ("revision_id", pa.int64()),
-            ("comment", pa.string()),
-        ]
+    "wikipedia_edits": _schema(
+        TS_F,
+        _field("wiki_db", S),
+        _field("event_type", S),
+        _field("title", S),
+        _field("editor", S),
+        pa.field("is_bot", pa.bool_()),
+        pa.field("revision_id", pa.int64()),
+        pa.field("comment", S),
     ),
-    "bluesky_posts": pa.schema(
-        [
-            ("event_ts", PA_TS),
-            ("did", pa.string()),
-            ("post_uri", pa.string()),
-            ("action", pa.string()),
-            ("text", pa.string()),
-            ("langs", pa.list_(pa.string())),
-            ("raw", pa.string()),
-        ]
+    "bluesky_posts": _schema(
+        TS_F,
+        _field("did", S),
+        _field("post_uri", S),
+        _field("action", S),
+        pa.field("text", S),
+        pa.field("langs", pa.list_(S)),
+        pa.field("raw", S),
     ),
 }
 
@@ -102,19 +112,63 @@ def fail(message, missing=None):
     sys.exit(2)
 
 
-def load_iceberg_catalog():
-    """REST catalog on RustFS with SigV4, derived purely from env facts."""
-    protocol = os.getenv("RUSTFS_PROTOCOL", "http")
-    host = os.getenv("RUSTFS_ENDPOINT_HOST")
-    port = os.getenv("RUSTFS_ENDPOINT_PORT", "9000")
-    region = os.getenv("RUSTFS_REGION", "us-east-1")
-    access_key = os.getenv("RUSTFS_ACCESS_KEY")
-    secret_key = os.getenv("RUSTFS_SECRET_KEY")
-    if not host:
-        fail("RUSTFS_ENDPOINT_HOST is not set (envFrom duckdb-settings)")
-    if not access_key or not secret_key:
-        fail("RUSTFS credentials not set (envFrom rustfs-credentials)")
+def catalog_properties():
+    """Catalog connection, derived purely from env facts.
 
+    Defaults build the RustFS REST catalog from duckdb-settings facts
+    (RUSTFS_PROTOCOL/_ENDPOINT_HOST/_ENDPOINT_PORT/_REGION) + rustfs-credentials.
+    GENERATOR_CATALOG_TYPE/URI/WAREHOUSE override everything for testing
+    against any other catalog (e.g. a local sqlite catalog with a file
+    warehouse — the full Iceberg write path with no RustFS at all).
+    """
+    catalog_type = os.getenv("GENERATOR_CATALOG_TYPE", "rest")
+    props = {
+        "type": catalog_type,
+        "warehouse": os.getenv("GENERATOR_CATALOG_WAREHOUSE", CATALOG_NAME),
+    }
+    uri = os.getenv("GENERATOR_CATALOG_URI")
+    if not uri:
+        # derive the REST endpoint from the shared duckdb-settings facts
+        protocol = os.getenv("RUSTFS_PROTOCOL", "http")
+        host = os.getenv("RUSTFS_ENDPOINT_HOST")
+        port = os.getenv("RUSTFS_ENDPOINT_PORT", "9000")
+        if not host:
+            fail("RUSTFS_ENDPOINT_HOST is not set (envFrom duckdb-settings)")
+        uri = f"{protocol}://{host}:{port}/iceberg"
+    props["uri"] = uri
+
+    if catalog_type == "rest":
+        region = os.getenv("RUSTFS_REGION", "us-east-1")
+        access_key = os.getenv("RUSTFS_ACCESS_KEY")
+        secret_key = os.getenv("RUSTFS_SECRET_KEY")
+        if not access_key or not secret_key:
+            fail("RUSTFS credentials not set (envFrom rustfs-credentials)")
+        base = uri.rsplit("/iceberg", 1)[0]
+        props.update({
+            "s3.endpoint": base,
+            "s3.access-key-id": access_key,
+            "s3.secret-access-key": secret_key,
+            "s3.region": region,
+            "s3.path-style-access": "true",
+            "rest.sigv4-enabled": "true",
+            "rest.signing-region": region,
+            "rest.signing-name": "s3",
+        })
+    return props
+
+
+def ensure_namespace(catalog, identifier):
+    """Create the namespace (db/schema) if missing — e.g. events / web.
+
+    create_namespace_if_not_exists is idempotent, so every cold start can
+    call it safely before create_table_if_not_exists.
+    """
+    namespace = identifier.split(".")[0]
+    catalog.create_namespace_if_not_exists(namespace)
+
+
+def load_iceberg_catalog():
+    """Open the catalog and ensure namespaces + tables exist."""
     from pyiceberg.catalog import load_catalog
     from pyiceberg.partitioning import PartitionField, PartitionSpec
     from pyiceberg.schema import Schema
@@ -125,26 +179,10 @@ def load_iceberg_catalog():
         LongType,
         NestedField,
         StringType,
-        TimestampType,
+        TimestamptzType,
     )
 
-    base = f"{protocol}://{host}:{port}"
-    catalog = load_catalog(
-        CATALOG_NAME,
-        **{
-            "type": "rest",
-            "uri": f"{base}/iceberg",
-            "warehouse": CATALOG_NAME,
-            "s3.endpoint": base,
-            "s3.access-key-id": access_key,
-            "s3.secret-access-key": secret_key,
-            "s3.region": region,
-            "s3.path-style-access": "true",
-            "rest.sigv4-enabled": "true",
-            "rest.signing-region": region,
-            "rest.signing-name": "s3",
-        },
-    )
+    catalog = load_catalog(CATALOG_NAME, **catalog_properties())
 
     def partition_of(ts_field_id):
         return PartitionSpec(
@@ -154,7 +192,7 @@ def load_iceberg_catalog():
 
     schemas = {
         "wikipedia_edits": Schema(
-            NestedField(1, "event_ts", TimestampType(), required=True),
+            NestedField(1, "event_ts", TimestamptzType(), required=True),
             NestedField(2, "wiki_db", StringType(), required=True),
             NestedField(3, "event_type", StringType(), required=True),
             NestedField(4, "title", StringType(), required=True),
@@ -164,24 +202,25 @@ def load_iceberg_catalog():
             NestedField(8, "comment", StringType(), required=False),
         ),
         "bluesky_posts": Schema(
-            NestedField(1, "event_ts", TimestampType(), required=True),
+            NestedField(1, "event_ts", TimestamptzType(), required=True),
             NestedField(2, "did", StringType(), required=True),
             NestedField(3, "post_uri", StringType(), required=True),
             NestedField(4, "action", StringType(), required=True),
             NestedField(5, "text", StringType(), required=False),
             NestedField(6, "langs", ListType(element_id=7,
-                                             element_type=StringType()),
+                                             element_type=StringType(),
+                                             element_required=False),
                         required=False),
             NestedField(8, "raw", StringType(), required=False),
         ),
     }
-    tables = {
-        name: catalog.create_table_if_not_exists(
-            f"events.{name}", schema=schemas[name],
-            partition_spec=partition_of(1),
+    tables = {}
+    for name in TABLES:
+        identifier = f"events.{name}"
+        ensure_namespace(catalog, identifier)
+        tables[name] = catalog.create_table_if_not_exists(
+            identifier, schema=schemas[name], partition_spec=partition_of(1),
         )
-        for name in TABLES
-    }
     return tables
 
 

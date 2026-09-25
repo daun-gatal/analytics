@@ -18,7 +18,16 @@ data:
   DRY_RUN_DIR: /tmp/dryrun
   #
   # Catalog identity (tables land under datalake.events.* / datalake.web.*)
+  # Namespaces (events / web) are created automatically if missing.
   GENERATOR_CATALOG_NAME: datalake
+  #
+  # Catalog connection — leave TYPE/URI/WAREHOUSE unset for the default
+  # RustFS REST catalog (derived from duckdb-settings + rustfs-credentials).
+  # Overrides exist for testing against any other catalog, e.g. a local
+  # sqlite catalog with a file warehouse (full Iceberg write path, no RustFS).
+  GENERATOR_CATALOG_TYPE: ''
+  GENERATOR_CATALOG_URI: ''
+  GENERATOR_CATALOG_WAREHOUSE: ''
   #
   # Streaming: buffer before committing — small appends, few snapshots
   GENERATOR_FLUSH_MAX_ROWS: '100'

@@ -15,9 +15,11 @@ FROM ${PYTHON_IMAGE}
 
 # Keep the ingest stack in lockstep; bump in one change.
 # PyIceberg: REST catalog client (SigV4) + S3 FileIO + Arrow writes.
-ARG PYICEBERG_VERSION=0.9.1
+# pyiceberg-core: native expression/transform evaluation (used by the
+# overwrite-by-hour predicates); validated against 0.12.0.
+ARG PYICEBERG_VERSION=0.12.0
 RUN pip install --no-cache-dir \
-      "pyiceberg[s3fs,pyarrow]==${PYICEBERG_VERSION}" \
+      "pyiceberg[s3fs,pyarrow,pyiceberg-core]==${PYICEBERG_VERSION}" \
       requests==2.32.4 \
       websockets==15.0.1
 
