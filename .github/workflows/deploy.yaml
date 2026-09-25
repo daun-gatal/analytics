@@ -250,94 +250,55 @@ jobs:
               echo "▶ In-cluster auth probe for $TARGET"
               case "$TARGET" in
                 generator)
+                  echo "→ pod image digest:"
+                  kubectl get pods -n analytics -o jsonpath='{range .items[*]}{.metadata.name}{"  "}{.spec.containers[0].image}{"  "}{.status.containerStatuses[0].imageID}{"\n"}{end}' | grep generator || true
                   kubectl exec -i -n analytics deploy/generator-stream -- python3 - <<'PYEOF'
+          import hashlib
           import os
-          import subprocess
           import sys
           import traceback
 
           print("python:", sys.version.split()[0], flush=True)
-          print(subprocess.run([sys.executable, "-m", "pip", "list"],
-                               capture_output=True, text=True).stdout, flush=True)
 
-          for mod in ("pyiceberg", "botocore", "boto3", "requests", "pyarrow"):
+          for f in ("/opt/generator/streaming.py", "/opt/generator/batch.py"):
               try:
-                  m = __import__(mod)
-                  print(f"import {mod}: OK", getattr(m, "__version__", "?"), getattr(m, "__file__", "?"), flush=True)
+                  data = open(f, "rb").read()
+                  print(f, "sha256:", hashlib.sha256(data).hexdigest()[:16],
+                        "len:", len(data), flush=True)
               except Exception as e:
-                  print(f"import {mod}: FAIL {type(e).__name__}: {e}", flush=True)
+                  print(f, "MISSING:", e, flush=True)
 
-          # 1) replicate streaming.py's exact catalog load, print full traceback
-          print("--- catalog load attempt ---", flush=True)
+          src = open("/opt/generator/streaming.py").read()
+          for needle in ("rest.sigv4-enabled", "client.access-key-id", "import boto3",
+                         "GENERATOR_DRY_RUN", "RUSTFS_ENDPOINT_HOST"):
+              print("streaming.py contains", repr(needle), ":", needle in src, flush=True)
+
+          print("--- env var names (values hidden) ---", flush=True)
+          for k in sorted(os.environ):
+              if k.startswith(("GENERATOR_", "RUSTFS_", "DUCKDB_")):
+                  v = os.environ[k]
+                  print("  ", k, "set, len", len(v), flush=True)
+
+          print("--- real load_iceberg_catalog from the running script ---", flush=True)
+          sys.path.insert(0, "/opt/generator")
+          import streaming  # noqa: E402
+
           try:
-              from pyiceberg.catalog import load_catalog
-              URI = os.environ.get("GENERATOR_CATALOG_URI", "")
-              BASE = URI.rsplit("/iceberg", 1)[0] if "/iceberg" in URI else URI.rstrip("/")
-              AK = os.environ.get("RUSTFS_ACCESS_KEY", "")
-              SK = os.environ.get("RUSTFS_SECRET_KEY", "")
-              REGION = os.environ.get("GENERATOR_S3_REGION", "us-east-1")
-              props = {
-                  "type": "rest",
-                  "uri": URI,
-                  "warehouse": os.environ.get("GENERATOR_WAREHOUSE", "datalake"),
-                  "s3.endpoint": BASE,
-                  "s3.access-key-id": AK,
-                  "s3.secret-access-key": SK,
-                  "s3.region": REGION,
-                  "s3.path-style-access": "true",
-                  "client.access-key-id": AK,
-                  "client.secret-access-key": SK,
-                  "client.region": REGION,
-                  "rest.sigv4-enabled": "true",
-                  "rest.signing-region": REGION,
-                  "rest.signing-name": "s3",
-              }
-              cat = load_catalog("probe", **props)
-              print("catalog loaded:", type(cat).__name__, flush=True)
-              print("namespaces:", cat.list_namespaces(), flush=True)
+              cat = streaming.load_iceberg_catalog()
+              print("catalog loaded OK:", type(cat).__name__, flush=True)
           except Exception:
               traceback.print_exc()
               sys.stdout.flush()
 
-          # 2) raw request matrix with botocore signing (no boto3 needed)
-          print("--- request matrix ---", flush=True)
+          print("--- catalog_properties dict (secrets redacted) ---", flush=True)
           try:
-              import requests
-              from botocore.auth import SigV4Auth
-              from botocore.awsrequest import AWSRequest
-              from botocore.credentials import Credentials
-
-              URL = BASE.rstrip("/") + "/iceberg/v1/config"
-              print("probing:", URL, flush=True)
-              EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-              frozen = Credentials(AK, SK)
-
-              def probe(label, service="s3", pyiceberg_headers=True, sign=True):
-                  headers = {"Accept": "*/*", "Accept-Encoding": "gzip, deflate",
-                             "Content-type": "application/json",
-                             "X-Client-Version": "PyIceberg 0.12.0",
-                             "X-Iceberg-Access-Delegation": "vended-credentials",
-                             "x-amz-content-sha256": EMPTY_SHA256} if pyiceberg_headers else {}
-                  req = AWSRequest(method="GET", url=URL, headers=dict(headers))
-                  if sign:
-                      SigV4Auth(frozen, service, REGION).add_auth(req)
-                  final = dict(req.headers)
-                  if pyiceberg_headers:
-                      final["Original-Authorization"] = "Bearer None"
-                      final["User-Agent"] = "PyIceberg/0.12.0"
-                  try:
-                      r = requests.get(URL, headers=final, timeout=15)
-                      print(label, "-> HTTP", r.status_code, ":", r.text[:200], flush=True)
-                  except Exception as e:
-                      print(label, "-> EXCEPTION", type(e).__name__, ":", e, flush=True)
-
-              probe("A minimal sigv4 (service=s3)", pyiceberg_headers=False)
-              probe("B pyiceberg-like + Original-Authorization")
-              probe("C pyiceberg-like service=s3tables")
-              probe("D unsigned")
+              props = streaming.catalog_properties()
+              safe = {}
+              for k, v in props.items():
+                  safe[k] = v if not any(s in k for s in ("access-key", "secret-access")) else "<len %d>" % len(v)
+              print(safe, flush=True)
           except Exception:
               traceback.print_exc()
-              sys.stdout.flush()
           PYEOF
                   ;;
                 *) echo "❌ probe not supported for $TARGET" && exit 1 ;;
