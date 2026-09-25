@@ -27,6 +27,7 @@ on:
           - restart
           - logs
           - probe
+          - sigprobe
           - trigger
   workflow_call:
     inputs:
@@ -308,6 +309,73 @@ jobs:
           PYEOF
                   ;;
                 *) echo "❌ probe not supported for $TARGET" && exit 1 ;;
+              esac
+              ;;
+            sigprobe)
+              # Replays the exact REST requests the Spark maintenance job
+              # makes, signed with botocore SigV4 from inside the cluster
+              # (via the generator pod, which has boto3). Isolates whether
+              # RustFS SignatureDoesNotMatch is path-dependent or
+              # header-dependent by varying one factor at a time.
+              echo "▶ SigV4 replay probe for $TARGET"
+              case "$TARGET" in
+                maintenance)
+                  kubectl exec -i -n analytics deploy/generator-stream -- python3 - <<'PYEOF'
+          import os
+          import urllib.error
+          import urllib.request
+
+          from botocore.auth import SigV4Auth
+          from botocore.awsrequest import AWSRequest
+          from botocore.credentials import Credentials
+
+          base = "http://rustfs-svc.rustfs.svc.cluster.local:9000"
+          creds = Credentials(os.environ["RUSTFS_ACCESS_KEY"], os.environ["RUSTFS_SECRET_KEY"])
+
+          # Header sets: botocore-minimal vs Java-client-shaped (Iceberg
+          # HTTPClient adds these base headers to every request).
+          java_headers = {
+              "Accept": "application/json",
+              "Content-Type": "application/json",
+              "X-Iceberg-Client-Version": "1.11.0",
+              "X-Iceberg-Client-Git-Commit-Short": "deadbee",
+              "User-Agent": "aws-sdk-java/1.11.0",
+          }
+
+          requests_matrix = [
+              ("list-namespaces, minimal headers", "/iceberg/v1/datalake/namespaces?pageToken=", None),
+              ("list-namespaces, java headers", "/iceberg/v1/datalake/namespaces?pageToken=", java_headers),
+              ("list-tables, minimal headers", "/iceberg/v1/datalake/namespaces/events/tables?pageToken=", None),
+              ("list-tables, java headers", "/iceberg/v1/datalake/namespaces/events/tables?pageToken=", java_headers),
+              ("list-tables, no query", "/iceberg/v1/datalake/namespaces/events/tables", None),
+              ("get-config, java headers", "/iceberg/v1/config?warehouse=datalake", java_headers),
+              ("load-table, java headers", "/iceberg/v1/datalake/namespaces/events/tables/wikipedia_edits", java_headers),
+          ]
+
+          for label, path, extra in requests_matrix:
+              url = base + path
+              req = AWSRequest(method="GET", url=url, headers=dict(extra or {}), data=b"")
+              SigV4Auth(creds, "s3", "us-east-1").add_auth(req)
+              sent_headers = {k.lower(): v for k, v in req.headers.items()}
+              signed = sent_headers.get("authorization", "")
+              signed_headers_list = ""
+              for part in signed.split(","):
+                  part = part.strip()
+                  if part.startswith("SignedHeaders="):
+                      signed_headers_list = part[len("SignedHeaders="):]
+              try:
+                  r = urllib.request.Request(url, headers=sent_headers)
+                  with urllib.request.urlopen(r, timeout=30) as resp:
+                      print(f"[{label}] HTTP {resp.status} signed={signed_headers_list}", flush=True)
+                      print("   body:", resp.read(160), flush=True)
+              except urllib.error.HTTPError as e:
+                  print(f"[{label}] HTTP {e.code} signed={signed_headers_list}", flush=True)
+                  print("   body:", e.read(300), flush=True)
+              except Exception as e:
+                  print(f"[{label}] ERROR {e}", flush=True)
+          PYEOF
+                  ;;
+                *) echo "❌ sigprobe not supported for $TARGET" && exit 1 ;;
               esac
               ;;
             trigger)
