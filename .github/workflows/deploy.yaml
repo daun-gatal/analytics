@@ -27,6 +27,7 @@ on:
           - restart
           - logs
           - probe
+          - trigger
   workflow_call:
     inputs:
       module:
@@ -308,5 +309,20 @@ jobs:
                   ;;
                 *) echo "❌ probe not supported for $TARGET" && exit 1 ;;
               esac
+              ;;
+            trigger)
+              # Fire a CronJob once, right now — verification without waiting
+              # for the schedule (e.g. maintenance-daily at 02:00 UTC).
+              echo "▶ Triggering $TARGET"
+              case "$TARGET" in
+                maintenance) CRON="cronjob/iceberg-maintenance-daily -n analytics" ;;
+                generator-batch) CRON="cronjob/generator-batch -n analytics" ;;
+                *) echo "❌ trigger not supported for $TARGET" && exit 1 ;;
+              esac
+              STAMP=$(date -u +%Y%m%d-%H%M%S)
+              kubectl create job --from=$CRON "manual-$TARGET-$STAMP" -n analytics
+              echo "→ created job manual-$TARGET-$STAMP; watch it with action=logs"
+              kubectl wait --for=condition=complete --timeout=480s "job/manual-$TARGET-$STAMP" -n analytics || \
+                kubectl logs -n analytics "job/manual-$TARGET-$STAMP" --tail=40 --prefix=true || true
               ;;
           esac
