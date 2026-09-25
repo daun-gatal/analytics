@@ -249,7 +249,7 @@ jobs:
               # newest two jobs (generator-batch / maintenance runs) with logs
               for JOB in $(kubectl get jobs -n analytics --sort-by=.metadata.creationTimestamp -o name | tail -2); do
                 echo "→ kubectl logs $JOB --tail=60"
-                kubectl logs -n analytics "$JOB" --tail=60 --prefix=true || true
+                kubectl logs -n analytics "$JOB" --tail=400 --prefix=true || true
               done
               ;;
             probe)
