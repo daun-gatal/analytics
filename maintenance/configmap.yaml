@@ -224,7 +224,8 @@ data:
 
         # Diagnostics: show what catalog conf actually reached Spark so
         # credential/signing plumbing issues are visible in job logs.
-        for conf_key in sorted(spark.conf.getAll()):
+        # spark.conf.getAll is a dict property in PySpark 4.x.
+        for conf_key in sorted(dict(spark.conf.getAll)):
             if CATALOG in conf_key:
                 conf_value = spark.conf.get(conf_key)
                 if "access-key" in conf_key or "secret" in conf_key:
