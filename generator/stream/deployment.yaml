@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: generator-stream
+  namespace: analytics
+  labels:
+    app.kubernetes.io/name: generator-stream
+    app.kubernetes.io/component: generator
+spec:
+  # Exactly one replica: two replicas would double-ingest the firehoses.
+  replicas: 1
+  strategy:
+    type: Recreate # avoids two writers during rollouts
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: generator-stream
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: generator-stream
+        app.kubernetes.io/component: generator
+    spec:
+      containers:
+        - name: stream
+          # kustomization.yaml images: transformer pins newName/newTag
+          image: generator
+          imagePullPolicy: Always
+          command: ["python", "/opt/generator/streaming.py"]
+          envFrom:
+            # runtime facts: RUSTFS_PROTOCOL/_ENDPOINT_HOST/_ENDPOINT_PORT/_REGION
+            - configMapRef:
+                name: duckdb-settings
+            # S3 credentials: RUSTFS_ACCESS_KEY / RUSTFS_SECRET_KEY
+            - secretRef:
+                name: rustfs-credentials
+            # GENERATOR_* / DRY_RUN_DIR tunables
+            - configMapRef:
+                name: generator-settings
+          # Liveness: the main loop stamps /tmp/heartbeat every 5s; a wedged
+          # event loop stops stamping and the kubelet restarts the container.
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - test $(( $(date +%s) - $(stat -c %Y /tmp/heartbeat 2>/dev/null || echo 0) )) -lt 300
+            initialDelaySeconds: 60
+            periodSeconds: 60
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi

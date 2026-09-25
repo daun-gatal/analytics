@@ -6,3 +6,4 @@ resources:
   - duckdb/
   - rustfs/
   - maintenance/
+  - generator/
