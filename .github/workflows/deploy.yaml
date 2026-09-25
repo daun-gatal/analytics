@@ -252,61 +252,92 @@ jobs:
                 generator)
                   kubectl exec -i -n analytics deploy/generator-stream -- python3 - <<'PYEOF'
           import os
-          import requests
-          import boto3
-          from botocore.auth import SigV4Auth
-          from botocore.awsrequest import AWSRequest
+          import subprocess
+          import sys
+          import traceback
 
-          URI = os.environ.get("GENERATOR_CATALOG_URI", "")
-          BASE = URI.rsplit("/iceberg", 1)[0] if "/iceberg" in URI else URI.rstrip("/")
-          URL = BASE.rstrip("/") + "/iceberg/v1/config"
-          AK = os.environ.get("RUSTFS_ACCESS_KEY", "")
-          SK = os.environ.get("RUSTFS_SECRET_KEY", "")
-          REGION = os.environ.get("GENERATOR_S3_REGION", "us-east-1")
+          print("python:", sys.version.split()[0], flush=True)
+          print(subprocess.run([sys.executable, "-m", "pip", "list"],
+                               capture_output=True, text=True).stdout, flush=True)
 
-          def shape(v):
-              if not v:
-                  return {"empty": True}
-              return {"len": len(v), "slash": "/" in v, "space": any(c.isspace() for c in v),
-                      "colon": ":" in v, "eq": "=" in v, "comma": "," in v,
-                      "nonascii": any(ord(c) > 127 for c in v)}
-
-          print("probing:", URL, flush=True)
-          print("ACCESS shape:", shape(AK), flush=True)
-          print("SECRET shape:", shape(SK), flush=True)
-
-          sess = boto3.Session(aws_access_key_id=AK, aws_secret_access_key=SK, region_name=REGION)
-          creds = sess.get_credentials()
-          frozen = creds.get_frozen_credentials() if creds else None
-          print("boto creds resolved:", frozen is not None, flush=True)
-          if frozen is None:
-              raise SystemExit(1)
-
-          EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-
-          def probe(label, service="s3", pyiceberg_headers=True, sign=True):
-              headers = {"Accept": "*/*", "Accept-Encoding": "gzip, deflate",
-                         "Content-type": "application/json",
-                         "X-Client-Version": "PyIceberg 0.12.0",
-                         "X-Iceberg-Access-Delegation": "vended-credentials",
-                         "x-amz-content-sha256": EMPTY_SHA256} if pyiceberg_headers else {}
-              req = AWSRequest(method="GET", url=URL, headers=dict(headers))
-              if sign:
-                  SigV4Auth(frozen, service, REGION).add_auth(req)
-              final = dict(req.headers)
-              if pyiceberg_headers:
-                  final["Original-Authorization"] = "Bearer None"
-                  final["User-Agent"] = "PyIceberg/0.12.0"
+          for mod in ("pyiceberg", "botocore", "boto3", "requests", "pyarrow"):
               try:
-                  r = requests.get(URL, headers=final, timeout=15)
-                  print(label, "-> HTTP", r.status_code, ":", r.text[:160], flush=True)
+                  m = __import__(mod)
+                  print(f"import {mod}: OK", getattr(m, "__version__", "?"), getattr(m, "__file__", "?"), flush=True)
               except Exception as e:
-                  print(label, "-> EXCEPTION", type(e).__name__, ":", e, flush=True)
+                  print(f"import {mod}: FAIL {type(e).__name__}: {e}", flush=True)
 
-          probe("A minimal sigv4 (service=s3)", pyiceberg_headers=False)
-          probe("B pyiceberg-like + Original-Authorization")
-          probe("C pyiceberg-like service=s3tables")
-          probe("D unsigned")
+          # 1) replicate streaming.py's exact catalog load, print full traceback
+          print("--- catalog load attempt ---", flush=True)
+          try:
+              from pyiceberg.catalog import load_catalog
+              URI = os.environ.get("GENERATOR_CATALOG_URI", "")
+              BASE = URI.rsplit("/iceberg", 1)[0] if "/iceberg" in URI else URI.rstrip("/")
+              AK = os.environ.get("RUSTFS_ACCESS_KEY", "")
+              SK = os.environ.get("RUSTFS_SECRET_KEY", "")
+              REGION = os.environ.get("GENERATOR_S3_REGION", "us-east-1")
+              props = {
+                  "type": "rest",
+                  "uri": URI,
+                  "warehouse": os.environ.get("GENERATOR_WAREHOUSE", "datalake"),
+                  "s3.endpoint": BASE,
+                  "s3.access-key-id": AK,
+                  "s3.secret-access-key": SK,
+                  "s3.region": REGION,
+                  "s3.path-style-access": "true",
+                  "client.access-key-id": AK,
+                  "client.secret-access-key": SK,
+                  "client.region": REGION,
+                  "rest.sigv4-enabled": "true",
+                  "rest.signing-region": REGION,
+                  "rest.signing-name": "s3",
+              }
+              cat = load_catalog("probe", **props)
+              print("catalog loaded:", type(cat).__name__, flush=True)
+              print("namespaces:", cat.list_namespaces(), flush=True)
+          except Exception:
+              traceback.print_exc()
+              sys.stdout.flush()
+
+          # 2) raw request matrix with botocore signing (no boto3 needed)
+          print("--- request matrix ---", flush=True)
+          try:
+              import requests
+              from botocore.auth import SigV4Auth
+              from botocore.awsrequest import AWSRequest
+              from botocore.credentials import Credentials
+
+              URL = BASE.rstrip("/") + "/iceberg/v1/config"
+              print("probing:", URL, flush=True)
+              EMPTY_SHA256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+              frozen = Credentials(AK, SK)
+
+              def probe(label, service="s3", pyiceberg_headers=True, sign=True):
+                  headers = {"Accept": "*/*", "Accept-Encoding": "gzip, deflate",
+                             "Content-type": "application/json",
+                             "X-Client-Version": "PyIceberg 0.12.0",
+                             "X-Iceberg-Access-Delegation": "vended-credentials",
+                             "x-amz-content-sha256": EMPTY_SHA256} if pyiceberg_headers else {}
+                  req = AWSRequest(method="GET", url=URL, headers=dict(headers))
+                  if sign:
+                      SigV4Auth(frozen, service, REGION).add_auth(req)
+                  final = dict(req.headers)
+                  if pyiceberg_headers:
+                      final["Original-Authorization"] = "Bearer None"
+                      final["User-Agent"] = "PyIceberg/0.12.0"
+                  try:
+                      r = requests.get(URL, headers=final, timeout=15)
+                      print(label, "-> HTTP", r.status_code, ":", r.text[:200], flush=True)
+                  except Exception as e:
+                      print(label, "-> EXCEPTION", type(e).__name__, ":", e, flush=True)
+
+              probe("A minimal sigv4 (service=s3)", pyiceberg_headers=False)
+              probe("B pyiceberg-like + Original-Authorization")
+              probe("C pyiceberg-like service=s3tables")
+              probe("D unsigned")
+          except Exception:
+              traceback.print_exc()
+              sys.stdout.flush()
           PYEOF
                   ;;
                 *) echo "❌ probe not supported for $TARGET" && exit 1 ;;
