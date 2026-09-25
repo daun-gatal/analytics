@@ -112,6 +112,26 @@ def fail(message, missing=None):
     sys.exit(2)
 
 
+def _clean_credential(name, raw):
+    """Strip whitespace and hard-fail on unusable credential values.
+
+    GitHub Secrets often carry a trailing newline; any control character in
+    the SigV4-signed Authorization header makes the HTTP client reject the
+    request with 'invalid header: authorization'. Stripping transparently
+    fixes the common case; anything still containing whitespace fails fast
+    with an actionable message.
+    """
+    value = (raw or "").strip()
+    if value != (raw or ""):
+        print(f"⚠ generator: {name} had surrounding whitespace/newline"
+              " — stripped (check the GitHub Secret)", file=sys.stderr,
+              flush=True)
+    if not value or any(c.isspace() for c in value):
+        fail(f"{name} is empty or contains whitespace characters"
+             " (check the GitHub Secret for stray spaces/newlines)")
+    return value
+
+
 def catalog_properties():
     """Catalog connection, derived purely from env facts.
 
@@ -139,10 +159,10 @@ def catalog_properties():
 
     if catalog_type == "rest":
         region = os.getenv("RUSTFS_REGION", "us-east-1")
-        access_key = os.getenv("RUSTFS_ACCESS_KEY")
-        secret_key = os.getenv("RUSTFS_SECRET_KEY")
-        if not access_key or not secret_key:
-            fail("RUSTFS credentials not set (envFrom rustfs-credentials)")
+        access_key = _clean_credential("RUSTFS_ACCESS_KEY",
+                                       os.getenv("RUSTFS_ACCESS_KEY"))
+        secret_key = _clean_credential("RUSTFS_SECRET_KEY",
+                                       os.getenv("RUSTFS_SECRET_KEY"))
         base = uri.rsplit("/iceberg", 1)[0]
         props.update({
             "s3.endpoint": base,
