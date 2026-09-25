@@ -125,10 +125,16 @@ def catalog_properties():
     against any other catalog (e.g. a local sqlite catalog with a file
     warehouse — the full Iceberg write path with no RustFS at all).
     """
-    catalog_type = os.getenv("GENERATOR_CATALOG_TYPE", "rest")
+    # Empty-string env vars (ConfigMap knobs left blank) must fall back to
+    # the defaults — os.getenv's default only applies when the var is
+    # UNSET. An empty GENERATOR_CATALOG_TYPE silently skipped the whole
+    # SigV4 setup below, so requests went out with pyiceberg 0.12's
+    # placeholder "Authorization: Bearer None" header and RustFS rejected
+    # them with 400 "invalid header: authorization".
+    catalog_type = os.getenv("GENERATOR_CATALOG_TYPE") or "rest"
     props = {
         "type": catalog_type,
-        "warehouse": os.getenv("GENERATOR_CATALOG_WAREHOUSE", CATALOG_NAME),
+        "warehouse": os.getenv("GENERATOR_CATALOG_WAREHOUSE") or CATALOG_NAME,
     }
     uri = os.getenv("GENERATOR_CATALOG_URI")
     if not uri:
