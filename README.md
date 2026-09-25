@@ -30,26 +30,89 @@ That's a distributed Iceberg table on object storage, being scanned by DuckDB's 
 
 ## Architecture
 
-```
-                 ┌────────────────────────────────────────────────┐
-   any PG client │                     analytics                 │
-  ─────────────▶ │  ┌──────────────────────────────┐             │
-   psql / ORM    │  │            duckdb            │             │
-                 │  │  :5433  DuckFlight PG wire   │             │
-  Flight SQL     │  │  :31337 DuckFlight FlightSQL │             │
-  ─────────────▶ │  │  :memory: + iceberg/httpfs   │             │
-                 │  └──────────────┬───────────────┘             │
-                 │                 │ S3 + Iceberg REST (SIGV4)    │
-                 │        ┌────────▼───────────────┐             │
-                 │        │         rustfs         │             │
-                 │        │ StatefulSet ×4, 10Gi/p │             │
-                 │        │ S3 API + Iceberg REST  │             │
-                 │        └────────────────────────┘             │
-                 └────────────────────────────────────────────────┘
+### Bird's-eye view
+
+```mermaid
+flowchart LR
+    PG["Postgres clients<br/>psql · DBeaver · Metabase · ORMs"]
+    FS["Arrow Flight SQL clients<br/>Spark · pandas · JDBC"]
+
+    subgraph ANALYTICS["namespace: analytics"]
+        SVC["Service/duckdb<br/>5433 postgres · 31337 flight<br/>Tailscale expose: duckdb"]
+        DUCK["Deployment/duckdb<br/>DuckDB 1.5.5 :memory:<br/>iceberg · httpfs · duckflight"]
+        HPA["HPA/duckdb<br/>1-3 replicas · cpu 65% · mem 75%"]
+        SETTINGS["ConfigMap/duckdb-settings<br/>runtime facts: endpoint, region, ports"]
+        CFG["ConfigMap/duckdb-config<br/>generate-config.sh + init.sql"]
+        AUTH["Secret/duckflight-auth<br/>username · password"]
+        CREDS["Secret/rustfs-credentials<br/>RUSTFS_ACCESS_KEY · RUSTFS_SECRET_KEY"]
+    end
+
+    subgraph RUSTFS["namespace: rustfs"]
+        RSVC["Service/rustfs-svc<br/>9000 S3 + Iceberg REST<br/>Tailscale expose: rustfs"]
+        STS["StatefulSet/rustfs<br/>4 pods · 10Gi longhorn each"]
+    end
+
+    PG --> SVC
+    FS --> SVC
+    SVC --> DUCK
+    HPA -. scales .- DUCK
+    SETTINGS -. envFrom .-> DUCK
+    CFG -. init renders toml + TLS .-> DUCK
+    AUTH -. env .-> DUCK
+    CREDS -. env .-> DUCK
+    DUCK == "S3 API + Iceberg REST SIGV4" ==> RSVC
+    RSVC --> STS
 ```
 
-* DuckDB pods are disposable — data lives on RustFS, and the HPA can scale `duckdb` 1→3 replicas on CPU/memory pressure.
-* Both services are exposed over Tailscale (`tailscale.com/expose`), so clients reach them from anywhere in the tailnet.
+* DuckDB pods are **disposable** — the only state is in the lake. The HPA can scale `duckdb` 1→3 on CPU/memory pressure.
+* Both services are exposed over **Tailscale** (`tailscale.com/expose`), so clients reach them from anywhere in the tailnet.
+
+### What happens at pod start
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant INIT as init container<br/>generate-duckflight-config
+    participant DUCK as duckdb container
+    participant RFS as RustFS<br/>rustfs-svc :9000
+
+    Note over INIT: env sources<br/>ConfigMap duckdb-settings<br/>Secret duckflight-auth<br/>Secret rustfs-credentials
+    INIT->>INIT: render /runtime/duckflight.toml<br/>PBKDF2 hash + TLS cert<br/>SANs from service.namespace
+    INIT->>DUCK: /runtime ready
+    DUCK->>DUCK: INSTALL/LOAD iceberg · httpfs · duckflight
+    DUCK->>DUCK: CREATE SECRET rustfs_s3<br/>all values via getenv()
+    DUCK->>RFS: ATTACH datalake<br/>Iceberg REST endpoint from env
+    DUCK->>DUCK: duckflight_pg_serve 0.0.0.0:5433
+    DUCK->>DUCK: duckflight_flight_serve 0.0.0.0:31337
+    Note over DUCK: Postgres wire + FlightSQL live,<br/>lake is one query away
+```
+
+### Keeping DuckDB aligned with RustFS
+
+```mermaid
+flowchart TD
+    A["workflow: rustfs applied"] --> B["scripts/sync-duckdb-rustfs.sh"]
+    B --> C{"read live<br/>Service/rustfs-svc"}
+    C --> D["derive RUSTFS_ENDPOINT_HOST/PORT"]
+    D --> E{"ConfigMap/duckdb-settings<br/>already matches?"}
+    E -- yes --> F["exit 0 - no restart"]
+    E -- no --> G["patch ConfigMap<br/>in namespace analytics"]
+    G --> H["kubectl rollout restart<br/>deployment/duckdb"]
+    H --> I["init.sql re-reads env<br/>via getenv()"]
+```
+
+### Facts at a glance
+
+| Aspect | Value |
+|---|---|
+| Namespaces | `analytics` (duckdb) · `rustfs` (object store) |
+| DuckDB endpoints | `5433` Postgres wire · `31337` Arrow Flight SQL |
+| RustFS endpoint | `rustfs-svc.rustfs.svc.cluster.local:9000` (S3 + Iceberg REST `/iceberg`) |
+| Object storage | RustFS chart v1.0.0, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
+| Scaling | HPA on duckdb: 1–3 replicas, CPU 65% / memory 75% |
+| Exposure | Tailscale: `duckdb` and `rustfs` hostnames |
+| Auth | DuckFlight PBKDF2-hashed creds + TLS, per-boot cert with `<service>.<ns>` SANs |
+| Credentials | Single GitHub Secret pair, stamped by CI into both namespaces |
 
 ## Structure
 
