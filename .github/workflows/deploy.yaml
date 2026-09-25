@@ -99,7 +99,6 @@ jobs:
             .|duckdb|rustfs|maintenance|generator) ;;
             *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs, maintenance, generator)" && exit 1 ;;
           esac
-          esac
 
       - uses: actions/checkout@v4
 
