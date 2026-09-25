@@ -192,6 +192,22 @@ data:
                 f"spark.sql.catalog.{CATALOG}.s3.secret-access-key",
                 os.getenv("RUSTFS_SECRET_KEY"),
             )
+            # client.* feeds the REST catalog's SigV4 signer — a SEPARATE
+            # property family from s3.* (which only configures the S3FileIO
+            # data plane). Without client.* the AWS SDK falls back to its
+            # credential chain, finds nothing in-cluster, and every catalog
+            # request dies with SdkClientException "Unable to load
+            # credentials" (same distinction as pyiceberg's client.* vs
+            # s3.* properties).
+            .config(
+                f"spark.sql.catalog.{CATALOG}.client.access-key-id",
+                os.getenv("RUSTFS_ACCESS_KEY"),
+            )
+            .config(
+                f"spark.sql.catalog.{CATALOG}.client.secret-access-key",
+                os.getenv("RUSTFS_SECRET_KEY"),
+            )
+            .config(f"spark.sql.catalog.{CATALOG}.client.region", region)
             .config("spark.sql.defaultCatalog", CATALOG)
             .getOrCreate()
         )
