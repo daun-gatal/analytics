@@ -25,6 +25,7 @@ on:
           - delete
           - dry-run
           - restart
+          - logs
   workflow_call:
     inputs:
       module:
@@ -97,6 +98,7 @@ jobs:
           case "${MODULE_PATH}" in
             .|duckdb|rustfs|maintenance|generator) ;;
             *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs, maintenance, generator)" && exit 1 ;;
+          esac
           esac
 
       - uses: actions/checkout@v4
@@ -222,5 +224,26 @@ jobs:
               echo "▶ Syncing duckdb with deployed rustfs"
               bash scripts/sync-duckdb-rustfs.sh
               kubectl get pods -n analytics
+              ;;
+            logs)
+              echo "▶ Dumping recent logs for $TARGET"
+              case "$TARGET" in
+                "."|all) TARGETS=("deployment/duckdb -n analytics" "deployment/generator-stream -n analytics") ;;
+                duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
+                rustfs) TARGETS=("statefulset/rustfs -n rustfs") ;;
+                generator) TARGETS=("deployment/generator-stream -n analytics") ;;
+                *) TARGETS=("$TARGET") ;;
+              esac
+              for OBJ in "${TARGETS[@]}"; do
+                echo "→ kubectl logs $OBJ --tail=80"
+                kubectl logs $OBJ --tail=80 --prefix=true || true
+              done
+              echo "→ recent jobs in analytics (last 4)"
+              kubectl get jobs -n analytics --sort-by=.metadata.creationTimestamp | tail -4 || true
+              # newest two jobs (generator-batch / maintenance runs) with logs
+              for JOB in $(kubectl get jobs -n analytics --sort-by=.metadata.creationTimestamp -o name | tail -2); do
+                echo "→ kubectl logs $JOB --tail=60"
+                kubectl logs -n analytics "$JOB" --tail=60 --prefix=true || true
+              done
               ;;
           esac
