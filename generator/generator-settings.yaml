@@ -21,10 +21,12 @@ data:
   # Namespaces (events / web) are created automatically if missing.
   GENERATOR_CATALOG_NAME: datalake
   #
-  # Catalog connection — leave TYPE/URI/WAREHOUSE unset for the default
-  # RustFS REST catalog (derived from duckdb-settings + rustfs-credentials).
-  # Overrides exist for testing against any other catalog, e.g. a local
-  # sqlite catalog with a file warehouse (full Iceberg write path, no RustFS).
+  # Catalog connection — leave TYPE/URI/WAREHOUSE EMPTY ('') for the
+  # default RustFS REST catalog (derived from duckdb-settings +
+  # rustfs-credentials). The scripts treat an empty value exactly like an
+  # unset one. Overrides exist for testing against any other catalog,
+  # e.g. a local sqlite catalog with a file warehouse (full Iceberg write
+  # path, no RustFS).
   GENERATOR_CATALOG_TYPE: ''
   GENERATOR_CATALOG_URI: ''
   GENERATOR_CATALOG_WAREHOUSE: ''
