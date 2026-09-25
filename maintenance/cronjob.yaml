@@ -31,7 +31,12 @@ spec:
               # kustomization.yaml images: transformer pins newName/newTag
               image: iceberg-maintenance
               imagePullPolicy: Always
+              # The apache/spark entrypoint pass-through executes these as
+              # ONE command under tini — the binary must be the FIRST arg.
+              # (Bare "--master ..." makes bash exec treat "--master" as an
+              # exec builtin option: "exec: invalid option".)
               args:
+                - /opt/spark/bin/spark-submit
                 - --master
                 - local[2]
                 - --driver-memory
