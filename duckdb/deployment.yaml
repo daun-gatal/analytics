@@ -82,6 +82,15 @@ spec:
                 secretKeyRef:
                   name: rustfs-credentials
                   key: RUSTFS_SECRET_KEY
+            # Downward API: the container's current memory request, in bytes
+            # (divisor 1). The kubelet resolves it at container start, so a
+            # VPA-resized pod (see vpa.yaml) always carries the live value;
+            # init.sql caps the buffer manager at 85% of it.
+            - name: DUCKDB_MEMORY_REQUEST_BYTES
+              valueFrom:
+                resourceFieldRef:
+                  containerName: duckdb
+                  resource: requests.memory
           resources:
             requests:
               cpu: '1'

@@ -161,6 +161,18 @@ data:
     LOAD duckflight;
 
     --
+    -- Buffer-manager cap: 85% of the container's memory request. The request
+    -- arrives as bytes via the Downward API (DUCKDB_MEMORY_REQUEST_BYTES in
+    -- deployment.yaml) and is VPA-managed (see vpa.yaml), so the cap re-syncs
+    -- to 85% of the live request on every pod (re)start. Without it DuckDB
+    -- defaults to 80% of node RAM — the container sets no memory limit.
+    -- SET accepts runtime functions since DuckDB 0.10.0 (PR #9809).
+    --
+    SET memory_limit =
+        CAST(COALESCE(getenv('DUCKDB_MEMORY_REQUEST_BYTES'), '2147483648') AS BIGINT)
+        * 85 / 100;
+
+    --
     -- RustFS S3 credentials — all values read from the container env
     --
     CREATE SECRET rustfs_s3 (

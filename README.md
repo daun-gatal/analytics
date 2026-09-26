@@ -40,7 +40,8 @@ flowchart LR
     subgraph ANALYTICS["namespace: analytics"]
         SVC["Service/duckdb<br/>5433 postgres · 31337 flight<br/>Tailscale expose: duckdb"]
         DUCK["Deployment/duckdb<br/>DuckDB 1.5.5 :memory:<br/>iceberg · httpfs · duckflight"]
-        HPA["HPA/duckdb<br/>1-3 replicas · cpu 65% · mem 75%"]
+        HPA["HPA/duckdb<br/>1-3 replicas · cpu 65%"]
+        VPA["VPA/duckdb<br/>memory only · 2-6Gi"]
         SETTINGS["ConfigMap/duckdb-settings<br/>runtime facts: endpoint, region, ports"]
         CFG["ConfigMap/duckdb-config<br/>generate-config.sh + init.sql"]
         AUTH["Secret/duckflight-auth<br/>username · password"]
@@ -56,6 +57,7 @@ flowchart LR
     FS --> SVC
     SVC --> DUCK
     HPA -. scales .- DUCK
+    VPA -. resizes memory requests .- DUCK
     SETTINGS -. envFrom .-> DUCK
     CFG -. init renders toml + TLS .-> DUCK
     AUTH -. env .-> DUCK
@@ -68,7 +70,7 @@ flowchart LR
     RSVC --> STS
 ```
 
-* DuckDB pods are **disposable** — the only state is in the lake. The HPA can scale `duckdb` 1→3 on CPU/memory pressure.
+* DuckDB pods are **disposable** — the only state is in the lake. The HPA scales `duckdb` 1→3 on CPU pressure; the VPA owns memory sizing (2–6Gi, Auto), and each pod re-derives its `memory_limit` from the request at start.
 * Both services are exposed over **Tailscale** (`tailscale.com/expose`), so clients reach them from anywhere in the tailnet.
 
 ### What happens at pod start
@@ -84,6 +86,7 @@ sequenceDiagram
     INIT->>INIT: render /runtime/duckflight.toml<br/>PBKDF2 hash + TLS cert<br/>SANs from service.namespace
     INIT->>DUCK: /runtime ready
     DUCK->>DUCK: INSTALL/LOAD iceberg · httpfs · duckflight
+    DUCK->>DUCK: SET memory_limit = 85% of request<br/>(Downward API env → getenv())
     DUCK->>DUCK: CREATE SECRET rustfs_s3<br/>all values via getenv()
     DUCK->>RFS: ATTACH datalake<br/>Iceberg REST endpoint from env
     DUCK->>DUCK: duckflight_pg_serve 0.0.0.0:5433
@@ -114,7 +117,7 @@ flowchart TD
 | RustFS endpoint | `rustfs-svc.rustfs.svc.cluster.local:9000` (S3 + Iceberg REST `/iceberg`) |
 | Default bucket | `datalake` — created and enabled as an S3 table bucket by `Job/rustfs-bootstrap` on every rustfs/all apply |
 | Object storage | RustFS chart v1.0.0, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
-| Scaling | HPA on duckdb: 1–3 replicas, CPU 65% / memory 75% |
+| Scaling | duckdb: HPA 1–3 replicas (CPU 65%) + VPA memory 2–6Gi (Auto) — `memory_limit` = 85% × request via the Downward API |
 | Exposure | Tailscale: `duckdb` and `rustfs` hostnames |
 | Auth | DuckFlight PBKDF2-hashed creds + TLS, per-boot cert with `<service>.<ns>` SANs |
 | Credentials | Single GitHub Secret pair, stamped by CI into both namespaces |
@@ -133,7 +136,8 @@ analytics/                     # repo root for manifests (this dir)
 │   ├── configmap.yaml               # duckdb-config (generate-config.sh + init.sql, getenv-driven)
 │   ├── deployment.yaml              # duckdb/duckdb:1.5.5, :memory:, init renders config
 │   ├── service.yaml                 # 5433 postgres, 31337 flight, tailscale expose
-│   └── hpa.yaml                     # 1..3 replicas, cpu 65% / memory 75%
+│   ├── hpa.yaml                     # 1..3 replicas, cpu 65% (memory → VPA)
+│   └── vpa.yaml                     # VPA: memory 2–6Gi, Auto — request feeds the Downward API env
 ├── rustfs/                    # RustFS object store (chart v1.0.0, StatefulSet x4)
 │   ├── kustomization.yaml           # Namespace/rustfs + helmCharts (repo charts.rustfs.com)
 │   ├── namespace.yaml               # Namespace/rustfs
@@ -174,6 +178,8 @@ Everything that can be parameterized is, via env / ConfigMap / Secret:
 | ConfigMap | `analytics/maintenance-config` | `maintenance.py` (the maintenance script) + tunables `MAINT_TARGET_FILE_SIZE`, `MAINT_SNAPSHOT_MAX_AGE`, `MAINT_RETAIN_LAST`, `MAINT_ORPHAN_MIN_AGE` — human-friendly units (`512MB`, `7d`, `72h`) parsed by the script |
 
 Flow at pod start: the `generate-duckflight-config` init container renders `/runtime/duckflight.toml` (DuckFlight auth + TLS; SANs derived from `<service>.<namespace>`). The duckdb container runs `-init /etc/duckdb/init.sql`, which reads **all runtime facts from the container env via `getenv()`** — endpoint, region, protocol (which derives `USE_SSL`), ports, and S3 credentials. No SQL is rendered at startup; `init.sql` is the ConfigMap's plain SQL.
+
+One value is computed rather than configured: after the LOADs, `init.sql` caps the buffer manager at **85% of the container's memory request** (`DUCKDB_MEMORY_REQUEST_BYTES`, exposed via the Downward API in `deployment.yaml`). `SET` accepts runtime functions (DuckDB ≥ 0.10.0), so the cap re-derives on every pod start — when the VPA raises the request, the next pod automatically gets a bigger `memory_limit` (fallback: 85% of 2Gi if the env is missing).
 
 One deliberate literal: `ATTACH 'datalake' AS datalake` — DuckDB's grammar does not accept expressions for the catalog path/alias, so the catalog identifier is a SQL literal while everything else (endpoint, region, protocol, credentials) is env-driven.
 
@@ -270,6 +276,7 @@ kubectl logs -f job/generator-manual -n analytics
 ## Prerequisites
 
 * `kubectl` + `kustomize` (kubectl 1.14+ embeds it) and **helm 3** (helmCharts inflation requires the helm binary)
+* VPA controllers for the duckdb VPA — official SIG-autoscaling chart: `helm repo add autoscaler https://kubernetes.github.io/autoscaler && helm install vpa autoscaler/vertical-pod-autoscaler --version 0.13.0`. Without the `verticalpodautoscalers` CRD, `kubectl apply -k duckdb/` fails on the VPA object
 * `longhorn` StorageClass
 * `tailscale` operator with Service annotations `tailscale.com/expose`
 * Namespaces are created by `namespace.yaml` (root) and `rustfs/namespace.yaml`; CI also ensures them idempotently
@@ -333,6 +340,7 @@ Required GitHub Secrets:
 ## Maintenance Notes
 
 * 1 file per resource — `git log -- <file>` isolates history
+* duckdb memory sizing is VPA-driven: the request → Downward API env → `init.sql` × 85% is the only place `memory_limit` is set; add no container memory limit and don't hardcode a `SET memory_limit` value
 * Helm chart upgrades: bump `version:` in `rustfs/kustomization.yaml`; helm values live in `rustfs/helm.yaml` only
 * Changing `drivesPerNode` on an existing RustFS StatefulSet is not allowed (chart rule) — topologies are fixed after first deploy
 * The `duckdb-settings` ConfigMap is kustomize-managed with static defaults; the sync script's patch is the only external mutation and is re-derived on every `apply`
