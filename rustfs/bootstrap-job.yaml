@@ -1,0 +1,58 @@
+kind: Job
+apiVersion: batch/v1
+metadata:
+  name: rustfs-bootstrap
+  namespace: rustfs
+  labels:
+    app.kubernetes.io/name: rustfs-bootstrap
+    app.kubernetes.io/part-of: rustfs
+spec:
+  # A failed ensure should surface as a failed Job, not retry forever:
+  # readiness alone can eat 5m, the three ensure phases retry 6x each.
+  backoffLimit: 6
+  activeDeadlineSeconds: 1200
+  # Garbage-collect the completed Job after an hour — the next rustfs/all
+  # apply re-creates it, so every deploy re-verifies the default bucket
+  # state (and it self-heals after PVC wipes).
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: rustfs-bootstrap
+        app.kubernetes.io/part-of: rustfs
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: bootstrap
+          # curl >= 7.76 is required for --aws-sigv4 (pinned 8.x)
+          image: curlimages/curl:8.22.0
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "/config/bootstrap.sh"]
+          envFrom:
+            - configMapRef:
+                name: rustfs-bootstrap-config
+            - secretRef:
+                name: rustfs-credentials   # created by CI in ns rustfs
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: rustfs-bootstrap-config
+            defaultMode: 0555

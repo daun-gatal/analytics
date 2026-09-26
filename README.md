@@ -112,6 +112,7 @@ flowchart TD
 | Namespaces | `analytics` (duckdb) · `rustfs` (object store) |
 | DuckDB endpoints | `5433` Postgres wire · `31337` Arrow Flight SQL |
 | RustFS endpoint | `rustfs-svc.rustfs.svc.cluster.local:9000` (S3 + Iceberg REST `/iceberg`) |
+| Default bucket | `datalake` — created and enabled as an S3 table bucket by `Job/rustfs-bootstrap` on every rustfs/all apply |
 | Object storage | RustFS chart v1.0.0, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
 | Scaling | HPA on duckdb: 1–3 replicas, CPU 65% / memory 75% |
 | Exposure | Tailscale: `duckdb` and `rustfs` hostnames |
@@ -136,7 +137,9 @@ analytics/                     # repo root for manifests (this dir)
 ├── rustfs/                    # RustFS object store (chart v1.0.0, StatefulSet x4)
 │   ├── kustomization.yaml           # Namespace/rustfs + helmCharts (repo charts.rustfs.com)
 │   ├── namespace.yaml               # Namespace/rustfs
-│   └── helm.yaml                    # chart values (distributed 4x1, longhorn, tailscale)
+│   ├── helm.yaml                    # chart values (distributed 4x1, longhorn, tailscale)
+│   ├── bootstrap-config.yaml        # rustfs-bootstrap-config: bootstrap.sh + RUSTFS_ENDPOINT/BUCKET_NAME
+│   └── bootstrap-job.yaml           # Job/rustfs-bootstrap — default bucket + S3 Tables enable, per apply
 ├── maintenance/               # Iceberg table maintenance (Spark local-mode CronJobs)
 │   ├── kustomization.yaml           # pins the CI-built ghcr.io image
 │   ├── configmap.yaml               # maintenance-config: maintenance.py + MAINT_* tunables
@@ -188,6 +191,30 @@ The script is idempotent — if the configmap already matches, it exits 0 with n
 ```bash
 bash scripts/sync-duckdb-rustfs.sh
 ```
+
+## Default bucket bootstrap
+
+`Job/rustfs-bootstrap` (ns `rustfs`) makes the default bucket exist and be query-ready as part of every deploy — no console clicks, no manual `aws`/`mc` steps:
+
+1. waits for `Service/rustfs-svc` readiness (`/health/ready`, the same path the chart's probes use — up to 5 min, so the 4-pod distributed set can converge)
+2. creates bucket **`datalake`** when missing (ordinary S3 `CreateBucket`; `409 BucketAlreadyOwnedByYou` counts as success)
+3. enables it as an **S3 table bucket** — `PUT /iceberg/v1/buckets/datalake`, the built-in Iceberg REST catalog action ([RustFS S3 Tables guide](https://docs.rustfs.com/en/administration/data/s3-tables))
+4. reads the state back and asserts `enabled: true` + `warehouse == datalake` before exiting 0
+
+* **All requests are SigV4-signed** with `curl --aws-sigv4` (image `curlimages/curl`, curl ≥ 7.76) using the existing `rustfs-credentials` Secret — no new secrets, no SDK image.
+* **Idempotent** — every step verifies-or-mutates, so re-runs against a bucket that already holds live table data are safe; enabling an existing bucket is supported.
+* **Re-runs per deploy** — `ttlSecondsAfterFinished: 3600` garbage-collects the completed Job, so the next `rustfs`/`all` apply re-creates and re-verifies it. CI's `apply` waits up to 10 min for completion (polling both `complete` and `failed`, like the `trigger` action) and fails with the Job's logs if the state can't be ensured.
+* **Tunables** — `RUSTFS_ENDPOINT`, `BUCKET_NAME`, `AWS_DEFAULT_REGION` in `rustfs/bootstrap-config.yaml`; the signing region must match `config.rustfs.region` in `rustfs/helm.yaml`.
+
+Re-run manually (e.g. after wiping the Longhorn PVCs):
+
+```bash
+kubectl delete job/rustfs-bootstrap -n rustfs --ignore-not-found
+kubectl kustomize --enable-helm rustfs/ | kubectl apply -f -
+kubectl logs -f job/rustfs-bootstrap -n rustfs
+```
+
+DuckDB's `ATTACH 'datalake'` and the generators' `create_namespace_if_not_exists` need nothing else — Iceberg namespaces and tables self-heal on first write.
 
 ## Iceberg table maintenance
 
