@@ -68,10 +68,19 @@ data:
 
 
     def discover_tables(spark):
-        """All tables in the catalog, fully qualified as <namespace>.<table>."""
+        """All tables in the catalog, fully qualified as <namespace>.<table>.
+
+        SHOW NAMESPACES returns the 'namespace' column as a flat STRING in
+        Spark 4 (nested namespaces unsupported → StringType) — joining it
+        with "." iterated its CHARACTERS ("db" → "d.b"), producing a bogus
+        multi-level namespace whose %1F wire path then broke the SigV4
+        signature (double-encoded). Normalize both possible shapes.
+        """
         tables = []
         for ns_row in spark.sql(f"SHOW NAMESPACES IN {CATALOG}").collect():
-            namespace = ".".join(ns_row["namespace"])
+            namespace = ns_row["namespace"]
+            if not isinstance(namespace, str):
+                namespace = ".".join(namespace)
             for t_row in spark.sql(f"SHOW TABLES IN {CATALOG}.{namespace}").collect():
                 tables.append(f"{namespace}.{t_row['tableName']}")
         return tables
