@@ -203,7 +203,7 @@ bash scripts/sync-duckdb-rustfs.sh
 
 * **All requests are SigV4-signed** with `curl --aws-sigv4` (image `curlimages/curl`, curl ≥ 7.76) using the existing `rustfs-credentials` Secret — no new secrets, no SDK image.
 * **Idempotent** — every step verifies-or-mutates, so re-runs against a bucket that already holds live table data are safe; enabling an existing bucket is supported.
-* **Re-runs per deploy** — `ttlSecondsAfterFinished: 3600` garbage-collects the completed Job, so the next `rustfs`/`all` apply re-creates and re-verifies it. CI's `apply` waits up to 10 min for completion (polling both `complete` and `failed`, like the `trigger` action) and fails with the Job's logs if the state can't be ensured.
+* **Re-runs per deploy** — CI drops the previous Job before every `rustfs`/`all` apply (Job specs are immutable) and `ttlSecondsAfterFinished: 3600` GCs the rest, so each apply re-runs and re-verifies it. The wait polls both `complete` and `failed` (like the `trigger` action) for up to 10 min and fails with the Job's logs if the state can't be ensured.
 * **Tunables** — `RUSTFS_ENDPOINT`, `BUCKET_NAME`, `AWS_DEFAULT_REGION` in `rustfs/bootstrap-config.yaml`; the signing region must match `config.rustfs.region` in `rustfs/helm.yaml`.
 
 Re-run manually (e.g. after wiping the Longhorn PVCs):
