@@ -23,6 +23,7 @@ data:
     import os
     import re
     import sys
+    import traceback
     from datetime import datetime, timedelta, timezone
 
     from pyspark.sql import SparkSession
@@ -248,7 +249,16 @@ data:
             env_value = os.getenv(env_key)
             print(f"DEBUG env {env_key} len={len(env_value) if env_value else 0}")
 
-        tables = discover_tables(spark)
+        # Discovery failure must NOT become a bare crash: the pyspark
+        # traceback is the only place that names the REST endpoint the
+        # catalog client 501'd on (ResourcePaths / ErrorHandlers frames).
+        try:
+            tables = discover_tables(spark)
+        except Exception:  # noqa: BLE001
+            print("❌ maintenance: table discovery failed", file=sys.stderr)
+            traceback.print_exc()
+            spark.stop()
+            sys.exit(2)
         print(f"▶ catalog={CATALOG} tables={len(tables)}")
         for table in tables:
             print(f"→ {table}")
@@ -261,6 +271,7 @@ data:
             except Exception as error:  # noqa: BLE001 — one bad table must not block the rest
                 failures.append(f"{table}/{step_name}: {error}")
                 print(f"    ✗ {step_name}: {error}", file=sys.stderr)
+                traceback.print_exc()
 
         for table in tables:
             run("compact", lambda: compact(spark, table, target_bytes))

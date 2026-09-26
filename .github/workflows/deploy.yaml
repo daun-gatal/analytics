@@ -46,6 +46,12 @@ jobs:
     # them without a pull secret.
     # Note: the very first push creates a package PRIVATE; flip it to
     # public once (GitHub → Packages → <name> → visibility).
+    #
+    # Read-only actions skip the build: the maintenance script ships via
+    # ConfigMap (no image rebuild), so the fix loop iterates on
+    # logs/trigger/sigprobe in ~2-3 min instead of ~10. Run an `apply`
+    # after touching maintenance/image/Dockerfile.
+    if: ${{ !(inputs.action == 'logs' || inputs.action == 'trigger' || inputs.action == 'sigprobe') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -87,6 +93,10 @@ jobs:
 
   execute:
     needs: build-image
+    # always() + result check: build-image is skipped for read-only actions
+    # (logs/trigger/sigprobe) and execute must still run in that case —
+    # while a real build FAILURE still stops the pipeline.
+    if: ${{ always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped') }}
     runs-on: ubuntu-latest
     env:
       MODULE_PATH: ${{ inputs.module == 'all' && '.' || inputs.module }}
@@ -247,10 +257,17 @@ jobs:
               done
               echo "→ recent jobs in analytics (last 4)"
               kubectl get jobs -n analytics --sort-by=.metadata.creationTimestamp | tail -4 || true
-              # newest two jobs (generator-batch / maintenance runs) with logs
+              # newest two jobs (generator-batch / maintenance runs) with logs.
+              # 'kubectl logs job/…' silently picks ONE pod — a retried job's
+              # other attempt (backoffLimit: 1) keeps its traceback invisible.
+              # Loop the pods of each job instead.
               for JOB in $(kubectl get jobs -n analytics --sort-by=.metadata.creationTimestamp -o name | tail -2); do
-                echo "→ kubectl logs $JOB --tail=60"
-                kubectl logs -n analytics "$JOB" --tail=400 --prefix=true || true
+                echo "→ job ${JOB}"
+                kubectl get job "$JOB" -n analytics -o wide || true
+                for POD in $(kubectl get pods -n analytics --selector="job-name=${JOB#job/}" -o name); do
+                  echo "→ kubectl logs $POD --tail=2000"
+                  kubectl logs -n analytics "$POD" --tail=2000 --prefix=true || true
+                done
               done
               ;;
             probe)
@@ -388,9 +405,42 @@ jobs:
                 *) echo "❌ trigger not supported for $TARGET" && exit 1 ;;
               esac
               STAMP=$(date -u +%Y%m%d-%H%M%S)
-              kubectl create job --from=$CRON "manual-$TARGET-$STAMP" -n analytics
-              echo "→ created job manual-$TARGET-$STAMP; watch it with action=logs"
-              kubectl wait --for=condition=complete --timeout=480s "job/manual-$TARGET-$STAMP" -n analytics || \
-                kubectl logs -n analytics "job/manual-$TARGET-$STAMP" --tail=40 --prefix=true || true
+              JOB="manual-$TARGET-$STAMP"
+              kubectl create job --from=$CRON "$JOB" -n analytics
+              echo "→ created job $JOB; watching it (max 15m)"
+
+              # Poll in short slices: 'kubectl wait --for=condition=complete'
+              # ignores FAILED jobs and used to block the full 480s even
+              # though the pod died in the first 30s. 'failed' is a real
+              # Job condition, so both outcomes break the loop immediately.
+              DEADLINE=$(( $(date +%s) + 900 ))
+              JOB_OK=""
+              while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+                if kubectl wait --for=condition=complete --timeout=10s "job/$JOB" -n analytics >/dev/null 2>&1; then
+                  JOB_OK=1
+                  break
+                fi
+                if kubectl wait --for=condition=failed --timeout=1s "job/$JOB" -n analytics >/dev/null 2>&1; then
+                  break
+                fi
+              done
+
+              # Evidence: status + logs of EVERY pod of the job (both
+              # attempts; 'kubectl logs job/…' reads only the newest pod,
+              # and a short tail hides the top of tracebacks — the part
+              # with the actual error message).
+              echo "→ job/$JOB status:"
+              kubectl get job "$JOB" -n analytics -o wide || true
+              kubectl get pods -n analytics --selector="job-name=$JOB" -o wide || true
+              for POD in $(kubectl get pods -n analytics --selector="job-name=$JOB" -o name); do
+                echo "→ kubectl logs $POD --tail=2000"
+                kubectl logs -n analytics "$POD" --tail=2000 --prefix=true || true
+              done
+
+              if [ -z "$JOB_OK" ]; then
+                echo "❌ $JOB did not complete successfully"
+                exit 1
+              fi
+              echo "✅ $JOB completed"
               ;;
           esac
