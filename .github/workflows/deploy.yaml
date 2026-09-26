@@ -29,6 +29,7 @@ on:
           - probe
           - sigprobe
           - trigger
+          - repair
   workflow_call:
     inputs:
       module:
@@ -563,5 +564,40 @@ jobs:
                 exit 1
               fi
               echo "✅ $JOB completed"
+              ;;
+            repair)
+              # Drop tables whose catalog entries RustFS 1.0.0 broke
+              # (dangling metadata pointers, "persisted table metadata is
+              # invalid" on every load). The generators recreate them on
+              # their next cycle/trigger; the S3 data files stay in place.
+              echo "▶ Repairing broken catalog entries for $TARGET"
+              case "$TARGET" in
+                maintenance)
+                  kubectl exec -i -n analytics deploy/generator-stream -- python3 - <<'PYEOF'
+          import sys
+          sys.path.insert(0, "/opt/generator")
+
+          from pyiceberg.catalog import load_catalog
+
+          import streaming
+
+          catalog = load_catalog(streaming.CATALOG_NAME, **streaming.catalog_properties())
+
+          for ident in ("events.wikipedia_edits", "web.github_events"):
+              try:
+                  catalog.drop_table(ident)
+                  print("repair: dropped", ident, flush=True)
+              except Exception as e:
+                  print("repair: drop failed for", ident, ":", e, flush=True)
+          PYEOF
+                  echo "→ restarting generator-stream so create_table_if_not_exists recreates the stream tables"
+                  kubectl rollout restart deployment/generator-stream -n analytics
+                  kubectl rollout status deployment/generator-stream -n analytics --timeout=180s || true
+                  echo "→ triggering generator-batch to recreate + backfill the web tables"
+                  STAMP=$(date -u +%Y%m%d-%H%M%S)
+                  kubectl create job --from=cronjob/generator-batch "manual-generator-batch-$STAMP" -n analytics
+                  ;;
+                *) echo "❌ repair not supported for $TARGET" && exit 1 ;;
+              esac
               ;;
           esac
