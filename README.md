@@ -70,7 +70,7 @@ flowchart LR
     RSVC --> STS
 ```
 
-* DuckDB pods are **disposable** — the only state is in the lake. The HPA scales `duckdb` 1→3 on CPU pressure; the VPA owns memory sizing (2–6Gi, Auto), and each pod re-derives its `memory_limit` from the request at start.
+* DuckDB pods are **disposable** — the only state is in the lake. The HPA scales `duckdb` 1→3 on CPU pressure; the VPA owns memory sizing (2–6Gi, `InPlaceOrRecreate` — request raises resize the pod in place, no restart), and each pod re-derives its `memory_limit` from the request at start.
 * Both services are exposed over **Tailscale** (`tailscale.com/expose`), so clients reach them from anywhere in the tailnet.
 
 ### What happens at pod start
@@ -117,7 +117,7 @@ flowchart TD
 | RustFS endpoint | `rustfs-svc.rustfs.svc.cluster.local:9000` (S3 + Iceberg REST `/iceberg`) |
 | Default bucket | `datalake` — created and enabled as an S3 table bucket by `Job/rustfs-bootstrap` on every rustfs/all apply |
 | Object storage | RustFS chart v1.0.0, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
-| Scaling | duckdb: HPA 1–3 replicas (CPU 65%) + VPA memory 2–6Gi (Auto) — `memory_limit` = 85% × request via the Downward API |
+| Scaling | duckdb: HPA 1–3 replicas (CPU 65%) + VPA memory 2–6Gi (InPlaceOrRecreate) — `memory_limit` = 85% × request via the Downward API |
 | Exposure | Tailscale: `duckdb` and `rustfs` hostnames |
 | Auth | DuckFlight PBKDF2-hashed creds + TLS, per-boot cert with `<service>.<ns>` SANs |
 | Credentials | Single GitHub Secret pair, stamped by CI into both namespaces |
@@ -137,7 +137,7 @@ analytics/                     # repo root for manifests (this dir)
 │   ├── deployment.yaml              # duckdb/duckdb:1.5.5, :memory:, init renders config
 │   ├── service.yaml                 # 5433 postgres, 31337 flight, tailscale expose
 │   ├── hpa.yaml                     # 1..3 replicas, cpu 65% (memory → VPA)
-│   └── vpa.yaml                     # VPA: memory 2–6Gi, Auto — request feeds the Downward API env
+│   └── vpa.yaml                     # VPA: memory 2–6Gi, InPlaceOrRecreate — request feeds the Downward API env
 ├── rustfs/                    # RustFS object store (chart v1.0.0, StatefulSet x4)
 │   ├── kustomization.yaml           # Namespace/rustfs + helmCharts (repo charts.rustfs.com)
 │   ├── namespace.yaml               # Namespace/rustfs
@@ -179,7 +179,7 @@ Everything that can be parameterized is, via env / ConfigMap / Secret:
 
 Flow at pod start: the `generate-duckflight-config` init container renders `/runtime/duckflight.toml` (DuckFlight auth + TLS; SANs derived from `<service>.<namespace>`). The duckdb container runs `-init /etc/duckdb/init.sql`, which reads **all runtime facts from the container env via `getenv()`** — endpoint, region, protocol (which derives `USE_SSL`), ports, and S3 credentials. No SQL is rendered at startup; `init.sql` is the ConfigMap's plain SQL.
 
-One value is computed rather than configured: after the LOADs, `init.sql` caps the buffer manager at **85% of the container's memory request** (`DUCKDB_MEMORY_REQUEST_BYTES`, exposed via the Downward API in `deployment.yaml`). `SET` accepts runtime functions (DuckDB ≥ 0.10.0), so the cap re-derives on every pod start — when the VPA raises the request, the next pod automatically gets a bigger `memory_limit` (fallback: 85% of 2Gi if the env is missing).
+One value is computed rather than configured: after the LOADs, `init.sql` caps the buffer manager at **85% of the container's memory request** (`DUCKDB_MEMORY_REQUEST_BYTES`, exposed via the Downward API in `deployment.yaml`). `SET` accepts runtime functions (DuckDB ≥ 0.10.0), so the cap re-derives on every pod start. The VPA raises requests in place (no restart), so a raise takes effect for scheduling immediately while the buffer cap re-syncs at the next pod start (fallback: 85% of 2Gi if the env is empty — `getenv()` returns `''`, not NULL, for missing vars).
 
 One deliberate literal: `ATTACH 'datalake' AS datalake` — DuckDB's grammar does not accept expressions for the catalog path/alias, so the catalog identifier is a SQL literal while everything else (endpoint, region, protocol, credentials) is env-driven.
 

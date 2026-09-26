@@ -6,9 +6,12 @@
 # Requires the VPA controllers in the cluster (official SIG-autoscaling chart):
 #   helm install vpa autoscaler/vertical-pod-autoscaler --version 0.13.0
 #
-# updateMode Auto applies new requests by evicting the pod — a brief restart;
-# the in-memory database reloads from init.sql. Use "Initial" instead to
-# resize only the pods the HPA creates, without ever evicting the live one.
+# updateMode InPlaceOrRecreate resizes requests in place — no restart when the
+# kubelet accepts the new size (the common case: a raise), falling back to a
+# pod recreate only when a resize is infeasible (brief restart; the in-memory
+# database reloads from init.sql). An in-place resize does not restart the
+# container, so the memory_limit re-derived by init.sql re-syncs at the next
+# pod start. ("Auto" is deprecated upstream — autoscaler issue #8424.)
 #
 # The request feeds deployment.yaml's Downward API env
 # (DUCKDB_MEMORY_REQUEST_BYTES); init.sql caps the buffer manager at 85% of
@@ -24,7 +27,7 @@ spec:
     kind: Deployment
     name: duckdb
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "InPlaceOrRecreate"
   resourcePolicy:
     containerPolicies:
       - containerName: duckdb
