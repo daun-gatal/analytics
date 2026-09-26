@@ -393,6 +393,70 @@ jobs:
                   print("   body:", e.read(1000), flush=True)
               except Exception as e:
                   print(f"[{label}] ERROR {e}", flush=True)
+
+          # ── per-table load status + raw metadata JSON dump ────────────
+          # The maintenance job 500s on 'persisted table metadata is
+          # invalid' for SOME tables (db.events works, others don't).
+          # Load every table, then fetch each table's newest persisted
+          # metadata file straight from object storage (boto3, path-style)
+          # so the JSON can be diffed against RustFS's validator rules.
+          import boto3
+          import botocore.config
+          import json as jsonlib
+
+          s3 = boto3.client(
+              "s3",
+              endpoint_url=base,
+              region_name="us-east-1",
+              aws_access_key_id=os.environ["RUSTFS_ACCESS_KEY"],
+              aws_secret_access_key=os.environ["RUSTFS_SECRET_KEY"],
+              config=botocore.config.Config(s3={"addressing_style": "path"}),
+          )
+
+          tables = [
+              ("db", "events"),
+              ("events", "bluesky_posts"),
+              ("events", "wikipedia_edits"),
+              ("web", "github_events"),
+              ("web", "wikimedia_pageviews"),
+          ]
+          for ns, table in tables:
+              rest_path = f"/iceberg/v1/datalake/namespaces/{ns}/tables/{table}"
+              req = AWSRequest(method="GET", url=base + rest_path, headers=dict(java_headers), data=b"")
+              S3SigV4Auth(creds, "s3", "us-east-1").add_auth(req)
+              try:
+                  r = urllib.request.Request(base + rest_path, headers={k.lower(): v for k, v in req.headers.items()})
+                  with urllib.request.urlopen(r, timeout=30) as resp:
+                      body = jsonlib.loads(resp.read())
+                      location = body.get("metadata-location", "<none>")
+                      print(f"[load {ns}.{table}] HTTP 200 location={location}", flush=True)
+                      has_inline = "metadata" in body and bool(body["metadata"])
+                      print(f"[load {ns}.{table}] inline metadata present: {has_inline}", flush=True)
+              except urllib.error.HTTPError as e:
+                  print(f"[load {ns}.{table}] HTTP {e.code}: {e.read(300)}", flush=True)
+                  continue
+              except Exception as e:
+                  print(f"[load {ns}.{table}] ERROR {e}", flush=True)
+                  continue
+
+              # fetch the newest persisted metadata file from the bucket
+              prefix = f".rustfs-table/warehouses/default/namespaces/{ns}/tables/{table}/metadata/"
+              try:
+                  listed = s3.list_objects_v2(Bucket="datalake", Prefix=prefix)
+                  files = [o["Key"] for o in listed.get("Contents", []) if o["Key"].endswith("metadata.json")]
+                  if not files:
+                      print(f"[meta {ns}.{table}] no metadata.json under {prefix}", flush=True)
+                      continue
+                  files.sort()
+                  newest = files[-1]
+                  obj = s3.get_object(Bucket="datalake", Key=newest)
+                  data = obj["Body"].read()
+                  print(f"[meta {ns}.{table}] {newest} ({len(data)} bytes)", flush=True)
+                  print("METADATA-JSON-START", flush=True)
+                  print(data.decode("utf-8", "replace"), flush=True)
+                  print("METADATA-JSON-END", flush=True)
+              except Exception as e:
+                  print(f"[meta {ns}.{table}] ERROR {e}", flush=True)
           PYEOF
                   ;;
                 *) echo "❌ sigprobe not supported for $TARGET" && exit 1 ;;
