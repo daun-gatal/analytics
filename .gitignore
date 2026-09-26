@@ -8,3 +8,8 @@ built.yaml
 # editor/OS noise
 .DS_Store
 __pycache__/
+
+# local debug/forensics dumps from the maintenance fix loop
+*.log
+.tcm*.rs
+.validation.rs
