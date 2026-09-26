@@ -432,29 +432,52 @@ jobs:
                       print(f"[load {ns}.{table}] HTTP 200 location={location}", flush=True)
                       has_inline = "metadata" in body and bool(body["metadata"])
                       print(f"[load {ns}.{table}] inline metadata present: {has_inline}", flush=True)
+                      if has_inline and (ns, table) in (("db", "events"), ("events", "bluesky_posts")):
+                          meta = body["metadata"]
+                          print(f"[meta {ns}.{table}] inline metadata top-level keys: {sorted(meta.keys())}", flush=True)
+                          for field in ("format-version", "last-sequence-number", "last-updated-ms", "last-column-id",
+                                        "current-schema-id", "default-spec-id", "last-partition-id"):
+                              print(f"[meta {ns}.{table}] {field}={meta.get(field, '<ABSENT>')}", flush=True)
+                          for field in ("schemas", "partition-specs", "sort-orders", "snapshot-log", "metadata-log"):
+                              value = meta.get(field)
+                              print(f"[meta {ns}.{table}] {field}: {'ABSENT' if value is None else (len(value) if isinstance(value, list) else type(value).__name__)}", flush=True)
               except urllib.error.HTTPError as e:
                   print(f"[load {ns}.{table}] HTTP {e.code}: {e.read(300)}", flush=True)
-                  continue
               except Exception as e:
                   print(f"[load {ns}.{table}] ERROR {e}", flush=True)
+
+              # the pointer route (GET_TABLE_METADATA_LOCATION) should not
+              # validate the metadata — it gives the exact key even for the
+              # broken tables; fetch THAT file raw from object storage.
+              req = AWSRequest(method="GET", url=base + rest_path + "/metadata-location", headers=dict(java_headers), data=b"")
+              S3SigV4Auth(creds, "s3", "us-east-1").add_auth(req)
+              try:
+                  r = urllib.request.Request(base + rest_path + "/metadata-location",
+                                             headers={k.lower(): v for k, v in req.headers.items()})
+                  with urllib.request.urlopen(r, timeout=30) as resp:
+                      pointer_body = jsonlib.loads(resp.read())
+                      location = pointer_body.get("metadata-location", "")
+                      print(f"[ptr {ns}.{table}] {location}", flush=True)
+              except urllib.error.HTTPError as e:
+                  print(f"[ptr {ns}.{table}] HTTP {e.code}: {e.read(200)}", flush=True)
+                  continue
+              except Exception as e:
+                  print(f"[ptr {ns}.{table}] ERROR {e}", flush=True)
                   continue
 
-              # fetch the newest persisted metadata file from the bucket
-              prefix = f".rustfs-table/warehouses/default/namespaces/{ns}/tables/{table}/metadata/"
+              if not location.startswith("s3://datalake/"):
+                  print(f"[meta {ns}.{table}] unexpected location scheme: {location}", flush=True)
+                  continue
+              key = location[len("s3://datalake/"):]
               try:
-                  listed = s3.list_objects_v2(Bucket="datalake", Prefix=prefix)
-                  files = [o["Key"] for o in listed.get("Contents", []) if o["Key"].endswith("metadata.json")]
-                  if not files:
-                      print(f"[meta {ns}.{table}] no metadata.json under {prefix}", flush=True)
-                      continue
-                  files.sort()
-                  newest = files[-1]
-                  obj = s3.get_object(Bucket="datalake", Key=newest)
+                  obj = s3.get_object(Bucket="datalake", Key=key)
                   data = obj["Body"].read()
-                  print(f"[meta {ns}.{table}] {newest} ({len(data)} bytes)", flush=True)
-                  print("METADATA-JSON-START", flush=True)
-                  print(data.decode("utf-8", "replace"), flush=True)
-                  print("METADATA-JSON-END", flush=True)
+                  print(f"[meta {ns}.{table}] {key} ({len(data)} bytes)", flush=True)
+                  if (ns, table) in (("events", "wikipedia_edits"), ("web", "github_events")):
+                      # broken tables: dump the FULL metadata for offline diff
+                      print("METADATA-JSON-START", flush=True)
+                      print(data.decode("utf-8", "replace"), flush=True)
+                      print("METADATA-JSON-END", flush=True)
               except Exception as e:
                   print(f"[meta {ns}.{table}] ERROR {e}", flush=True)
           PYEOF
