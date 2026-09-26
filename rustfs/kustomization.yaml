@@ -7,7 +7,11 @@ resources:
 helmCharts:
   - name: rustfs
     repo: https://charts.rustfs.com/
-    version: 1.0.0
+    # 1.0.0's built-in table catalog rejects valid Iceberg metadata from
+    # pyiceberg and Spark commits ("persisted table metadata is invalid",
+    # 501s on spec paths) — the table-catalog layer is under active
+    # development upstream; pin the newest preview.
+    version: 1.0.1-preview.11
     releaseName: rustfs
     namespace: rustfs
     valuesFile: helm.yaml
