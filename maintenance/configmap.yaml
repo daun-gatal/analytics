@@ -307,3 +307,32 @@ data:
   MAINT_RETAIN_LAST: "10"           # always keep at least N snapshots
   MAINT_ORPHAN_MIN_AGE: "72h"       # orphan grace window (files newer than
                                     # this are never deleted, even if unreferenced)
+  #
+  # Log4j2 override for the maintenance driver JVM (activated via
+  # JAVA_TOOL_OPTIONS in the CronJob): keeps Spark's console appender and
+  # INFO root level, adds DEBUG for the AWS SigV4 signer — it prints
+  # "AWS4 Canonical Request: …" / string-to-sign for EVERY signed REST
+  # call, which is how a SignatureDoesNotMatch between the Iceberg Java
+  # client and RustFS gets localized (successful vs failing request,
+  # byte for byte) — plus the Apache HttpClient 5 wire logger for the
+  # actually-sent bytes.
+  #
+  log4j2-wire.properties: |
+    status = error
+    dest = out
+    name = maintenance-wire
+
+    appender.console.type = Console
+    appender.console.name = console
+    appender.console.layout.type = PatternLayout
+    appender.console.layout.pattern = %d{yy/MM/dd HH:mm:ss} %p %c{1}: %m%n
+    appender.console.filter.threshold.type = ThresholdFilter
+    appender.console.filter.threshold.level = debug
+
+    rootLogger.level = info
+    rootLogger.appenderRef.stdout.ref = console
+
+    logger.signer.name = software.amazon.awssdk
+    logger.signer.level = debug
+    logger.wire.name = org.apache.hc.client5.wire
+    logger.wire.level = debug

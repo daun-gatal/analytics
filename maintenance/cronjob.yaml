@@ -88,6 +88,12 @@ spec:
                     configMapKeyRef:
                       name: duckdb-settings
                       key: RUSTFS_REGION
+                # Applies the ConfigMap's log4j2-wire.properties to the driver
+                # JVM (spark-submit's client-mode JVM ignores
+                # spark.driver.extraJavaOptions). DEBUG-logs the SigV4 signer
+                # canonical requests + the hc5 wire — see the ConfigMap key.
+                - name: JAVA_TOOL_OPTIONS
+                  value: "-Dlog4j2.configurationFile=/opt/maintenance/log4j2-wire.properties"
               volumeMounts:
                 - name: maintenance-script
                   mountPath: /opt/maintenance
@@ -106,3 +112,5 @@ spec:
                 items:
                   - key: maintenance.py
                     path: maintenance.py
+                  - key: log4j2-wire.properties
+                    path: log4j2-wire.properties
