@@ -194,6 +194,38 @@ jobs:
             apply)
               echo "▶ Applying $TARGET"
               kubectl apply -f /tmp/built.yaml
+              case "$TARGET" in
+                "."|all|rustfs)
+                  # Job/rustfs-bootstrap ensures the default bucket exists
+                  # and is enabled as an S3 table bucket (idempotent — see
+                  # rustfs/bootstrap-config.yaml). Its ttlSecondsAfterFinished
+                  # re-creates it on every rustfs/all apply, so this wait is
+                  # the deploy-time guarantee that the lake is query-ready.
+                  # Poll in short slices like the `trigger` action:
+                  # 'kubectl wait --for=condition=complete' alone blocks the
+                  # full timeout on a FAILED job.
+                  if kubectl get job/rustfs-bootstrap -n rustfs >/dev/null 2>&1; then
+                    echo "▶ Waiting for rustfs-bootstrap (default bucket + table bucket)"
+                    DEADLINE=$(( $(date +%s) + 600 ))
+                    JOB_OK=""
+                    while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+                      if kubectl wait --for=condition=complete --timeout=10s job/rustfs-bootstrap -n rustfs >/dev/null 2>&1; then
+                        JOB_OK=1
+                        break
+                      fi
+                      if kubectl wait --for=condition=failed --timeout=1s job/rustfs-bootstrap -n rustfs >/dev/null 2>&1; then
+                        break
+                      fi
+                    done
+                    if [ -z "$JOB_OK" ]; then
+                      kubectl logs job/rustfs-bootstrap -n rustfs --tail=100 --prefix=true || true
+                      echo "❌ rustfs-bootstrap did not complete — see logs above"
+                      exit 1
+                    fi
+                    echo "✅ rustfs-bootstrap completed"
+                  fi
+                  ;;
+              esac
               echo "▶ Syncing duckdb with deployed rustfs"
               bash scripts/sync-duckdb-rustfs.sh
               ;;
@@ -243,7 +275,7 @@ jobs:
               case "$TARGET" in
                 "."|all) TARGETS=("deployment/duckdb -n analytics" "deployment/generator-stream -n analytics") ;;
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
-                rustfs) TARGETS=("statefulset/rustfs -n rustfs") ;;
+                rustfs) TARGETS=("statefulset/rustfs -n rustfs" "job/rustfs-bootstrap -n rustfs") ;;
                 generator) TARGETS=("deployment/generator-stream -n analytics") ;;
                 # maintenance has no long-running pod — its evidence lives in
                 # the cronjob status + job listings below.

@@ -1,0 +1,161 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: rustfs-bootstrap-config
+  namespace: rustfs
+data:
+  #
+  # Default bucket bootstrap for the datalake on RustFS.
+  #
+  # bootstrap.sh runs in the rustfs-bootstrap Job and reads ALL runtime
+  # facts from env:
+  #   rustfs-bootstrap-config ConfigMap -> RUSTFS_ENDPOINT, BUCKET_NAME,
+  #                                       AWS_DEFAULT_REGION (keys below)
+  #   rustfs-credentials Secret         -> RUSTFS_ACCESS_KEY/_SECRET_KEY
+  #
+  # Idempotent ensure: create the default bucket when missing, enable it
+  # as an S3 table bucket (RustFS built-in Iceberg REST catalog), then
+  # verify the state back. Exits non-zero so the Job — and the CI wait
+  # after `apply` — fail loudly when the state cannot be ensured.
+  #
+  RUSTFS_ENDPOINT: http://rustfs-svc:9000
+  BUCKET_NAME: datalake
+  AWS_DEFAULT_REGION: us-east-1
+  bootstrap.sh: |
+    #!/bin/sh
+    #
+    # bootstrap.sh — ensure the default bucket exists and is enabled as
+    # an S3 table bucket (RustFS built-in Iceberg REST catalog).
+    #
+    # Every request is SigV4-signed with curl --aws-sigv4 (curl >= 7.76):
+    #   1. wait for RustFS readiness (/health/ready, same path the
+    #      chart's readiness probes use)
+    #   2. create the bucket when missing (ordinary S3 CreateBucket)
+    #   3. PUT /iceberg/v1/buckets/<bucket> — enable the table bucket
+    #   4. GET the state back and assert enabled + warehouse
+    #
+    # Steps 2-4 are idempotent: re-runs verify instead of mutate, so this
+    # is safe against a bucket that already holds live table data. The
+    # enablement API and the empty-body sha256 header follow the official
+    # guide: https://docs.rustfs.com/en/administration/data/s3-tables
+    #
+    set -eu
+
+    : "${RUSTFS_ENDPOINT:?rustfs-bootstrap-config: RUSTFS_ENDPOINT must be set}"
+    : "${BUCKET_NAME:?rustfs-bootstrap-config: BUCKET_NAME must be set}"
+    : "${AWS_DEFAULT_REGION:?rustfs-bootstrap-config: AWS_DEFAULT_REGION must be set}"
+    : "${RUSTFS_ACCESS_KEY:?rustfs-credentials: RUSTFS_ACCESS_KEY must be set}"
+    : "${RUSTFS_SECRET_KEY:?rustfs-credentials: RUSTFS_SECRET_KEY must be set}"
+
+    # SHA-256 of the empty payload — RustFS requires this header on
+    # empty-body signed requests.
+    EMPTY_SHA256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+    # http METHOD PATH -> prints the HTTP status code (no --fail: callers
+    # branch on the code; curl still exits non-zero on transport errors)
+    http() {
+        curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --request "$1" \
+            --aws-sigv4 "aws:amz:${AWS_DEFAULT_REGION}:s3" \
+            --user "${RUSTFS_ACCESS_KEY}:${RUSTFS_SECRET_KEY}" \
+            --header "x-amz-content-sha256: ${EMPTY_SHA256}" \
+            --max-time 30 \
+            "${RUSTFS_ENDPOINT}$2"
+    }
+
+    # with_retries COUNT CMD... — run a check until it passes or COUNT
+    # attempts run out; 10s between attempts
+    with_retries() {
+        _max="$1"
+        shift
+        _n=0
+        while :; do
+            if "$@"; then
+                return 0
+            fi
+            _n=$((_n + 1))
+            if [ "$_n" -ge "$_max" ]; then
+                return 1
+            fi
+            echo "  ↻ attempt ${_n}/${_max} failed — retrying in 10s" >&2
+            sleep 10
+        done
+    }
+
+    ready() {
+        [ "$(http GET /health/ready)" = "200" ]
+    }
+
+    create_bucket() {
+        _code="$(http PUT "/${BUCKET_NAME}")"
+        case "${_code}" in
+            200|201)
+                echo "✅ Bucket '${BUCKET_NAME}' created"
+                ;;
+            409)
+                # BucketAlreadyOwnedByYou — created between our runs;
+                # the desired end state is reached either way.
+                echo "✅ Bucket '${BUCKET_NAME}' already exists (409 on create)"
+                ;;
+            *)
+                echo "  CreateBucket returned ${_code:-transport-error}" >&2
+                return 1
+                ;;
+        esac
+    }
+
+    enable_table_bucket() {
+        _code="$(http PUT "/iceberg/v1/buckets/${BUCKET_NAME}")"
+        if [ "${_code}" = "200" ]; then
+            echo "✅ Table bucket '${BUCKET_NAME}' enabled (or already enabled)"
+        else
+            echo "  Enable table bucket returned ${_code:-transport-error}" >&2
+            return 1
+        fi
+    }
+
+    verify_state() {
+        _state="$(curl --silent --show-error --fail-with-body \
+            --aws-sigv4 "aws:amz:${AWS_DEFAULT_REGION}:s3" \
+            --user "${RUSTFS_ACCESS_KEY}:${RUSTFS_SECRET_KEY}" \
+            --header "x-amz-content-sha256: ${EMPTY_SHA256}" \
+            --max-time 30 \
+            "${RUSTFS_ENDPOINT}/iceberg/v1/buckets/${BUCKET_NAME}")"
+        echo "${_state}"
+        _flat="$(echo "${_state}" | tr -d ' \t\r\n')"
+        case "${_flat}" in
+            *'"enabled":true'*) ;;
+            *) echo "  state does not report enabled:true" >&2; return 1 ;;
+        esac
+        case "${_flat}" in
+            *'"warehouse":"'"${BUCKET_NAME}"'"'*) ;;
+            *) echo "  warehouse is not '${BUCKET_NAME}'" >&2; return 1 ;;
+        esac
+    }
+
+    echo "▶ Waiting for RustFS readiness at ${RUSTFS_ENDPOINT} (up to 5m)"
+    if ! with_retries 60 ready; then
+        echo "❌ RustFS did not become ready — check statefulset/rustfs pods" >&2
+        exit 1
+    fi
+    echo "✅ RustFS ready"
+
+    echo "▶ Ensuring bucket '${BUCKET_NAME}' exists"
+    if ! with_retries 6 create_bucket; then
+        echo "❌ Could not ensure bucket '${BUCKET_NAME}'" >&2
+        exit 1
+    fi
+
+    echo "▶ Ensuring '${BUCKET_NAME}' is an S3 table bucket"
+    if ! with_retries 6 enable_table_bucket; then
+        echo "❌ Could not enable table bucket '${BUCKET_NAME}'" >&2
+        exit 1
+    fi
+
+    echo "▶ Verifying table bucket state"
+    if ! with_retries 6 verify_state; then
+        echo "❌ Table bucket state verification failed" >&2
+        exit 1
+    fi
+
+    echo "✅ Default bucket ready: '${BUCKET_NAME}' is an S3 table bucket (warehouse '${BUCKET_NAME}')"

@@ -3,15 +3,17 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
+  - bootstrap-config.yaml
+  - bootstrap-job.yaml
 
 helmCharts:
   - name: rustfs
     repo: https://charts.rustfs.com/
-    # 1.0.0's built-in table catalog rejects valid Iceberg metadata from
-    # pyiceberg and Spark commits ("persisted table metadata is invalid",
-    # 501s on spec paths) — the table-catalog layer is under active
-    # development upstream; pin the newest preview.
-    version: 1.0.1-preview.11
+    # Back on the GA chart: 1.0.0's table catalog is validated against
+    # pyiceberg/Spark commits (2026-09-26). Upstream pruned the
+    # 1.0.1-preview charts AND their images from public registries, so
+    # the preview pin broke CI ("chart 1.0.1-preview.11 not found").
+    version: 1.0.0
     releaseName: rustfs
     namespace: rustfs
     valuesFile: helm.yaml
