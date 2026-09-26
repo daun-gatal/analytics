@@ -30,6 +30,11 @@ on:
           - sigprobe
           - trigger
           - repair
+      force_rebuild:
+        description: 'Rebuild both images even if unchanged since last push'
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       module:
@@ -38,6 +43,10 @@ on:
       action:
         required: true
         type: string
+      force_rebuild:
+        required: false
+        type: boolean
+        default: false
 
 
 jobs:
@@ -48,10 +57,22 @@ jobs:
     # Note: the very first push creates a package PRIVATE; flip it to
     # public once (GitHub → Packages → <name> → visibility).
     #
-    # Read-only actions skip the build: the maintenance script ships via
-    # ConfigMap (no image rebuild), so the fix loop iterates on
-    # logs/trigger/sigprobe in ~2-3 min instead of ~10. Run an `apply`
-    # after touching maintenance/image/Dockerfile.
+    # Builds are change-gated per image: every push tags the image with
+    # its commit sha, so GHCR itself records what was already published.
+    # The newest ancestor commit holding a :sha tag of the image is the
+    # published state — diff that commit→HEAD over the image's input
+    # paths; no changes → the image is identical → skip the build and
+    # :latest keeps serving the right bytes:
+    #   iceberg-maintenance → maintenance/image/**
+    #   generator           → generator/** minus *.yaml (the Dockerfile
+    #                         and the two baked-in .py scripts; kustomize
+    #                         manifests are not part of the image)
+    # Detection is fail-open (any registry/git hiccup keeps the build),
+    # and `force_rebuild` bypasses it. Read-only actions skip the job
+    # entirely: the maintenance script ships via ConfigMap (no image
+    # rebuild), so the fix loop iterates on logs/trigger/sigprobe in
+    # ~2-3 min instead of ~10. Run an `apply` after touching
+    # maintenance/image/Dockerfile — detection picks it up; no force needed.
     if: ${{ !(inputs.action == 'logs' || inputs.action == 'trigger' || inputs.action == 'sigprobe') }}
     runs-on: ubuntu-latest
     permissions:
@@ -59,6 +80,10 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # change detection walks ancestor commits looking for each
+          # image's last-pushed :sha tag — needs the full history
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -70,7 +95,62 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Skip an image's build when GHCR already has it: the registry has
+      # a :sha tag for a commit whose image-input files are identical to
+      # HEAD (two imagetools probes minimum, usually one per image).
+      - name: Detect images already up to date
+        id: changes
+        # fail-open: a detection glitch must never block a real build
+        continue-on-error: true
+        run: |
+          set -u
+          REPO="${GITHUB_REPOSITORY,,}"
+
+          if [ "${{ inputs.force_rebuild }}" = "true" ]; then
+            echo "▸ force_rebuild — building both images"
+            echo "maintenance=1" >> "$GITHUB_OUTPUT"
+            echo "generator=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # newest ancestor commit of HEAD with a :${sha} tag of this
+          # image on GHCR (= the content :latest serves right now)
+          last_pushed() {
+            for sha in $(git rev-list --max-count=40 "${GITHUB_SHA}"); do
+              if docker buildx imagetools inspect "ghcr.io/${REPO}/$1:${sha}" >/dev/null 2>&1; then
+                printf '%s\n' "${sha}"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          # gate <image> <label> -- <git pathspecs…>: sets <label>=0 when
+          # the published image is already identical, <label>=1 to build
+          gate() {
+            local image="$1" label="$2" last=""
+            shift 2
+            if ! last="$(last_pushed "${image}")"; then
+              echo "▸ ${label}: no pushed :sha tag in the last 40 commits — building"
+              echo "${label}=1" >> "$GITHUB_OUTPUT"
+            elif [ -z "$(git diff --name-only "${last}" "${GITHUB_SHA}" -- "$@")" ]; then
+              echo "▸ ${label}: image already up to date with ${last:0:7} — skipping build"
+              echo "${label}=0" >> "$GITHUB_OUTPUT"
+            else
+              echo "▸ ${label}: image inputs changed since ${last:0:7}:"
+              git diff --name-only "${last}" "${GITHUB_SHA}" -- "$@" | sed 's/^/    /'
+              echo "${label}=1" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          # the whole context dir IS the image
+          gate iceberg-maintenance maintenance -- maintenance/image
+          # generator: everything under generator/ except the kustomize
+          # yaml (manifests don't end up in the image)
+          gate generator generator -- generator ':(exclude)generator/*.yaml'
+
       - name: Build and push
+        if: ${{ steps.changes.outputs.maintenance != '0' }}
         uses: docker/build-push-action@v6
         with:
           context: maintenance/image
@@ -82,6 +162,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Build and push generator
+        if: ${{ steps.changes.outputs.generator != '0' }}
         uses: docker/build-push-action@v6
         with:
           context: generator
@@ -96,7 +177,8 @@ jobs:
     needs: build-image
     # always() + result check: build-image is skipped for read-only actions
     # (logs/trigger/sigprobe) and execute must still run in that case —
-    # while a real build FAILURE still stops the pipeline.
+    # while a real build FAILURE still stops the pipeline. Change-gated
+    # builds (both steps skipped inside the job) still count as success.
     if: ${{ always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped') }}
     runs-on: ubuntu-latest
     env:

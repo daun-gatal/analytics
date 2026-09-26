@@ -303,9 +303,10 @@ kubectl apply -k duckdb/
 Manual dispatch (also `workflow_call`). Inputs:
 
 * `module`: `all` (root kustomization), `duckdb`, `rustfs`, `maintenance`, `generator`
-* `action`: `apply` | `diff` | `delete` | `dry-run` | `restart` | `logs` | `probe`
+* `action`: `apply` | `diff` | `delete` | `dry-run` | `restart` | `logs` | `probe` | `sigprobe` | `trigger` | `repair`
+* `force_rebuild` (boolean, default `false`): build both images even when change detection finds them already up to date
 
-Pipeline: **build-image** (`maintenance/image/Dockerfile` → public GHCR package, GHA-cached) → **execute**: validate module → checkout → kubectl v1.30 → helm v3.14 → Tailscale login (`tag:git`) → write kubeconfig from the `KUBECONFIG` secret → ensure namespaces → create secrets from GitHub Secrets → `kubectl kustomize --enable-helm` build → execute action (rendered manifests are applied with `apply -f`, since `kubectl apply -k` cannot inflate helm charts).
+Pipeline: **build-image** (change-gated per image — a build only runs when GHCR's `:<sha>`-tagged history shows the image's inputs changed since its last push; `maintenance/image/**` gates the Spark image, `generator/**` minus `*.yaml` the generator. Re-running the same commit, or dispatching after a manifest/ConfigMap-only change, restores the cached layers instead of pushing identical images; see `force_rebuild`) → **execute**: validate module → checkout → kubectl v1.30 → helm v3.14 → Tailscale login (`tag:git`) → write kubeconfig from the `KUBECONFIG` secret → ensure namespaces → create secrets from GitHub Secrets → `kubectl kustomize --enable-helm` build → execute action (rendered manifests are applied with `apply -f`, since `kubectl apply -k` cannot inflate helm charts).
 
 Behavior notes:
 
