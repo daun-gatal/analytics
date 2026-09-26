@@ -37,6 +37,10 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+            # curlimages/curl declares USER "curl_user" (non-numeric), which
+            # the kubelet cannot verify as non-root — pin the numeric UID/GID.
+            runAsUser: 100    # curl_user
+            runAsGroup: 101   # curl_users
             capabilities:
               drop:
                 - ALL

@@ -193,6 +193,15 @@ jobs:
           case "${K8S_ACTION}" in
             apply)
               echo "▶ Applying $TARGET"
+              case "$TARGET" in
+                "."|all|rustfs)
+                  # Job specs are immutable — drop the previous bootstrap Job
+                  # so the apply below can install the current template. The
+                  # Job is idempotent and ttl-managed; re-running it per apply
+                  # is the intended semantics (default bucket ensure).
+                  kubectl delete job/rustfs-bootstrap -n rustfs --ignore-not-found
+                  ;;
+              esac
               kubectl apply -f /tmp/built.yaml
               case "$TARGET" in
                 "."|all|rustfs)
