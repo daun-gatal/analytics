@@ -279,28 +279,64 @@ data:
             print(f"→ {table}")
 
         failures = []
+        skipped = []
+
+        # RustFS 1.0.0 server defects, classified so they don't mask real
+        # regressions or fail the whole cronjob forever:
+        #
+        # - "persisted table metadata is invalid" — the catalog entry points
+        #   at a metadata file that no longer exists (dangling pointer, the
+        #   table is unreadable server-side). No client-side step can fix
+        #   it; the table needs operator repair (drop + recreate). Skip the
+        #   whole table.
+        # - "row-level snapshot operation requires deleted data files" —
+        #   the server rejects overwrite commits that only swap manifests,
+        #   so rewrite_manifests can never succeed. Skip the step.
+        CATALOG_BROKEN = "persisted table metadata is invalid"
+        MANIFEST_REWRITE_REJECTED = "row-level snapshot operation requires deleted data files"
 
         def run(step_name, step):
             try:
                 step()
             except Exception as error:  # noqa: BLE001 — one bad table must not block the rest
+                text = str(error)
+                if CATALOG_BROKEN in text:
+                    skipped.append(f"{table}: catalog entry broken ({CATALOG_BROKEN}) — needs drop + recreate")
+                    print(f"    ⚠ {step_name}: table catalog state is broken, skipping table", file=sys.stderr)
+                    return "table"
+                if MANIFEST_REWRITE_REJECTED in text:
+                    skipped.append(f"{table}/{step_name}: server rejects manifest-rewrite commits ({MANIFEST_REWRITE_REJECTED})")
+                    print(f"    ⚠ {step_name}: known server limitation, skipping step", file=sys.stderr)
+                    return "step"
                 failures.append(f"{table}/{step_name}: {error}")
                 print(f"    ✗ {step_name}: {error}", file=sys.stderr)
                 traceback.print_exc()
+            return None
 
         for table in tables:
-            run("compact", lambda: compact(spark, table, target_bytes))
-            run("manifests", lambda: rewrite_manifests(spark, table))
-            run(
+            outcome = run("compact", lambda: compact(spark, table, target_bytes))
+            if outcome == "table":
+                continue
+            outcome = run("manifests", lambda: rewrite_manifests(spark, table))
+            if outcome == "table":
+                continue
+            outcome = run(
                 "expire",
                 lambda: expire_snapshots(spark, table, max_age_seconds, retain_last),
             )
+            if outcome == "table":
+                continue
             run(
                 "orphans",
                 lambda: remove_orphan_files(spark, table, orphan_min_age),
             )
 
         spark.stop()
+
+        if skipped:
+            print(f"⚠ maintenance: {len(skipped)} table/step(s) skipped (server-side):", file=sys.stderr)
+            for entry in skipped:
+                print(f"   - {entry}", file=sys.stderr)
 
         if failures:
             print(f"❌ maintenance: {len(failures)} step(s) failed:", file=sys.stderr)
