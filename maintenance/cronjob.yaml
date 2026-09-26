@@ -88,6 +88,10 @@ spec:
                     configMapKeyRef:
                       name: duckdb-settings
                       key: RUSTFS_REGION
+                # Keep maintenance.py's stdout (progress lines) unbuffered so
+                # kubectl logs interleaves it with stderr in real order.
+                - name: PYTHONUNBUFFERED
+                  value: "1"
               volumeMounts:
                 - name: maintenance-script
                   mountPath: /opt/maintenance

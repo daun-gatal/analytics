@@ -1,0 +1,462 @@
+Execute Action	2026-09-26T07:27:52.4861233Z → kubectl logs pod/manual-maintenance-20260926-072653-f8zxx --tail=2000
+Execute Action	2026-09-26T07:27:53.7465426Z POD-f8zxxWARNING: Using incubator modules: jdk.incubator.vector
+Execute Action	2026-09-26T07:27:53.7466818Z POD-f8zxxUsing Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+Execute Action	2026-09-26T07:27:53.7468379Z POD-f8zxx26/09/26 07:27:09 INFO SparkContext: Running Spark version 4.0.4
+Execute Action	2026-09-26T07:27:53.7470544Z POD-f8zxx26/09/26 07:27:09 INFO SparkContext: OS info Linux, 7.0.0-34-generic, amd64
+Execute Action	2026-09-26T07:27:53.7472075Z POD-f8zxx26/09/26 07:27:09 INFO SparkContext: Java version 17.0.19
+Execute Action	2026-09-26T07:27:53.7473999Z POD-f8zxx26/09/26 07:27:09 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Execute Action	2026-09-26T07:27:53.7475906Z POD-f8zxx26/09/26 07:27:10 INFO ResourceUtils: ==============================================================
+Execute Action	2026-09-26T07:27:53.7477677Z POD-f8zxx26/09/26 07:27:10 INFO ResourceUtils: No custom resources configured for spark.driver.
+Execute Action	2026-09-26T07:27:53.7479528Z POD-f8zxx26/09/26 07:27:10 INFO ResourceUtils: ==============================================================
+Execute Action	2026-09-26T07:27:53.7481676Z POD-f8zxx26/09/26 07:27:10 INFO SparkContext: Submitted application: iceberg-maintenance
+Execute Action	2026-09-26T07:27:53.7484393Z POD-f8zxx26/09/26 07:27:10 INFO ResourceProfile: Default ResourceProfile created, executor resources: Map(cores -> name: cores, amount: 1, script: , vendor: , memory -> name: memory, amount: 1024, script: , vendor: , offHeap -> name: offHeap, amount: 0, script: , vendor: ), task resources: Map(cpus -> name: cpus, amount: 1.0)
+Execute Action	2026-09-26T07:27:53.7487977Z POD-f8zxx26/09/26 07:27:10 INFO ResourceProfile: Limiting resource is cpu
+Execute Action	2026-09-26T07:27:53.7489684Z POD-f8zxx26/09/26 07:27:10 INFO ResourceProfileManager: Added ResourceProfile id: 0
+Execute Action	2026-09-26T07:27:53.7491934Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: Changing view acls to: spark
+Execute Action	2026-09-26T07:27:53.7493287Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: Changing modify acls to: spark
+Execute Action	2026-09-26T07:27:53.7495023Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: Changing view acls groups to: spark
+Execute Action	2026-09-26T07:27:53.7496791Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: Changing modify acls groups to: spark
+Execute Action	2026-09-26T07:27:53.7499581Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: spark groups with view permissions: EMPTY; users with modify permissions: spark; groups with modify permissions: EMPTY; RPC SSL disabled
+Execute Action	2026-09-26T07:27:53.7502074Z POD-f8zxx26/09/26 07:27:10 INFO Utils: Successfully started service 'sparkDriver' on port 38549.
+Execute Action	2026-09-26T07:27:53.7503211Z POD-f8zxx26/09/26 07:27:10 INFO SparkEnv: Registering MapOutputTracker
+Execute Action	2026-09-26T07:27:53.7504483Z POD-f8zxx26/09/26 07:27:10 INFO SparkEnv: Registering BlockManagerMaster
+Execute Action	2026-09-26T07:27:53.7505876Z POD-f8zxx26/09/26 07:27:10 INFO BlockManagerMasterEndpoint: Using org.apache.spark.storage.DefaultTopologyMapper for getting topology information
+Execute Action	2026-09-26T07:27:53.7507350Z POD-f8zxx26/09/26 07:27:10 INFO BlockManagerMasterEndpoint: BlockManagerMasterEndpoint up
+Execute Action	2026-09-26T07:27:53.7508509Z POD-f8zxx26/09/26 07:27:10 INFO SparkEnv: Registering BlockManagerMasterHeartbeat
+Execute Action	2026-09-26T07:27:53.7510040Z POD-f8zxx26/09/26 07:27:10 INFO DiskBlockManager: Created local directory at /tmp/blockmgr-bacacb1b-3520-42e8-80bc-fdd51dfa817b
+Execute Action	2026-09-26T07:27:53.7511500Z POD-f8zxx26/09/26 07:27:10 INFO SparkEnv: Registering OutputCommitCoordinator
+Execute Action	2026-09-26T07:27:53.7512398Z POD-f8zxx26/09/26 07:27:10 INFO JettyUtils: Start Jetty 0.0.0.0:4040 for SparkUI
+Execute Action	2026-09-26T07:27:53.7513331Z POD-f8zxx26/09/26 07:27:10 INFO Utils: Successfully started service 'SparkUI' on port 4040.
+Execute Action	2026-09-26T07:27:53.7514254Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: Changing view acls to: spark
+Execute Action	2026-09-26T07:27:53.7515132Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: Changing modify acls to: spark
+Execute Action	2026-09-26T07:27:53.7516025Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: Changing view acls groups to: spark
+Execute Action	2026-09-26T07:27:53.7516947Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: Changing modify acls groups to: spark
+Execute Action	2026-09-26T07:27:53.7518484Z POD-f8zxx26/09/26 07:27:10 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: spark groups with view permissions: EMPTY; users with modify permissions: spark; groups with modify permissions: EMPTY; RPC SSL disabled
+Execute Action	2026-09-26T07:27:53.7520572Z POD-f8zxx26/09/26 07:27:10 INFO Executor: Starting executor ID driver on host manual-maintenance-20260926-072653-f8zxx
+Execute Action	2026-09-26T07:27:53.7521600Z POD-f8zxx26/09/26 07:27:10 INFO Executor: OS info Linux, 7.0.0-34-generic, amd64
+Execute Action	2026-09-26T07:27:53.7522443Z POD-f8zxx26/09/26 07:27:10 INFO Executor: Java version 17.0.19
+Execute Action	2026-09-26T07:27:53.7523447Z POD-f8zxx26/09/26 07:27:10 INFO Executor: Starting executor with user classpath (userClassPathFirst = false): ''
+Execute Action	2026-09-26T07:27:53.7524675Z POD-f8zxx26/09/26 07:27:10 INFO Executor: Created or updated repl class loader org.apache.spark.util.MutableURLClassLoader@3e7b9972 for default.
+Execute Action	2026-09-26T07:27:53.7526025Z POD-f8zxx26/09/26 07:27:10 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 36655.
+Execute Action	2026-09-26T07:27:53.7527304Z POD-f8zxx26/09/26 07:27:10 INFO NettyBlockTransferService: Server created on manual-maintenance-20260926-072653-f8zxx:36655
+Execute Action	2026-09-26T07:27:53.7528573Z POD-f8zxx26/09/26 07:27:10 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+Execute Action	2026-09-26T07:27:53.7530112Z POD-f8zxx26/09/26 07:27:10 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, manual-maintenance-20260926-072653-f8zxx, 36655, None)
+Execute Action	2026-09-26T07:27:53.7531886Z POD-f8zxx26/09/26 07:27:10 INFO BlockManagerMasterEndpoint: Registering block manager manual-maintenance-20260926-072653-f8zxx:36655 with 434.4 MiB RAM, BlockManagerId(driver, manual-maintenance-20260926-072653-f8zxx, 36655, None)
+Execute Action	2026-09-26T07:27:53.7533531Z POD-f8zxx26/09/26 07:27:10 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, manual-maintenance-20260926-072653-f8zxx, 36655, None)
+Execute Action	2026-09-26T07:27:53.7534936Z POD-f8zxx26/09/26 07:27:10 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, manual-maintenance-20260926-072653-f8zxx, 36655, None)
+Execute Action	2026-09-26T07:27:53.7536235Z POD-f8zxx26/09/26 07:27:13 INFO SharedState: Setting hive.metastore.warehouse.dir ('null') to the value of spark.sql.warehouse.dir.
+Execute Action	2026-09-26T07:27:53.7537397Z POD-f8zxx26/09/26 07:27:13 INFO SharedState: Warehouse path is 'file:/opt/spark/work-dir/spark-warehouse'.
+Execute Action	2026-09-26T07:27:53.7538463Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake=org.apache.iceberg.spark.SparkCatalog
+Execute Action	2026-09-26T07:27:53.7539475Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.client.access-key-id=<len 5>
+Execute Action	2026-09-26T07:27:53.7540547Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.client.region=us-east-1
+Execute Action	2026-09-26T07:27:53.7541531Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.client.secret-access-key=<len 16>
+Execute Action	2026-09-26T07:27:53.7542578Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.io-impl=org.apache.iceberg.aws.s3.S3FileIO
+Execute Action	2026-09-26T07:27:53.7543622Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.rest.access-key-id=<len 5>
+Execute Action	2026-09-26T07:27:53.7544683Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.rest.secret-access-key=<len 16>
+Execute Action	2026-09-26T07:27:53.7545660Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.rest.signing-name=s3
+Execute Action	2026-09-26T07:27:53.7546622Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.rest.signing-region=us-east-1
+Execute Action	2026-09-26T07:27:53.7547593Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.rest.sigv4-enabled=true
+Execute Action	2026-09-26T07:27:53.7548551Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.s3.access-key-id=<len 5>
+Execute Action	2026-09-26T07:27:53.7549646Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.s3.endpoint=http://rustfs-svc.rustfs.svc.cluster.local:9000
+Execute Action	2026-09-26T07:27:53.7550807Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.s3.path-style-access=true
+Execute Action	2026-09-26T07:27:53.7551751Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.s3.region=us-east-1
+Execute Action	2026-09-26T07:27:53.7552706Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.s3.secret-access-key=<len 16>
+Execute Action	2026-09-26T07:27:53.7553626Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.type=rest
+Execute Action	2026-09-26T07:27:53.7554643Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.uri=http://rustfs-svc.rustfs.svc.cluster.local:9000/iceberg
+Execute Action	2026-09-26T07:27:53.7555692Z POD-f8zxxDEBUG spark conf spark.sql.catalog.datalake.warehouse=datalake
+Execute Action	2026-09-26T07:27:53.7556577Z POD-f8zxxDEBUG env RUSTFS_ACCESS_KEY len=5
+Execute Action	2026-09-26T07:27:53.7557288Z POD-f8zxxDEBUG env RUSTFS_SECRET_KEY len=16
+Execute Action	2026-09-26T07:27:53.7557986Z POD-f8zxxDEBUG env AWS_ACCESS_KEY_ID len=5
+Execute Action	2026-09-26T07:27:53.7558696Z POD-f8zxxDEBUG env AWS_SECRET_ACCESS_KEY len=16
+Execute Action	2026-09-26T07:27:53.7559393Z POD-f8zxxDEBUG env AWS_REGION len=9
+Execute Action	2026-09-26T07:27:53.7560585Z POD-f8zxx26/09/26 07:27:14 WARN AuthManagers: The property rest.sigv4-enabled is deprecated and will be removed in a future release. Please use the property rest.auth.type=sigv4 instead.
+Execute Action	2026-09-26T07:27:53.7561988Z POD-f8zxx26/09/26 07:27:14 INFO AuthManagers: Loading AuthManager implementation: org.apache.iceberg.rest.auth.OAuth2Manager
+Execute Action	2026-09-26T07:27:53.7563225Z POD-f8zxx26/09/26 07:27:14 INFO AuthManagers: Loading AuthManager implementation: org.apache.iceberg.aws.RESTSigV4AuthManager
+Execute Action	2026-09-26T07:27:53.7564486Z POD-f8zxx26/09/26 07:27:14 INFO CatalogUtil: Loading custom FileIO implementation: org.apache.iceberg.aws.s3.S3FileIO
+Execute Action	2026-09-26T07:27:53.7565497Z POD-f8zxx26/09/26 07:27:15 INFO CodeGenerator: Code generated in 196.104669 ms
+Execute Action	2026-09-26T07:27:53.7566373Z POD-f8zxx26/09/26 07:27:15 INFO CodeGenerator: Code generated in 5.054517 ms
+Execute Action	2026-09-26T07:27:53.7567428Z POD-f8zxx❌ maintenance: table discovery failed
+Execute Action	2026-09-26T07:27:53.7568135Z POD-f8zxxTraceback (most recent call last):
+Execute Action	2026-09-26T07:27:53.7569099Z POD-f8zxx  File "/opt/maintenance/..2026_09_26_07_26_55.636434324/maintenance.py", line 237, in main
+Execute Action	2026-09-26T07:27:53.7570034Z POD-f8zxx    tables = discover_tables(spark)
+Execute Action	2026-09-26T07:27:53.7570932Z POD-f8zxx  File "/opt/maintenance/..2026_09_26_07_26_55.636434324/maintenance.py", line 56, in discover_tables
+Execute Action	2026-09-26T07:27:53.7571956Z POD-f8zxx    for t_row in spark.sql(f"SHOW TABLES IN {CATALOG}.{namespace}").collect():
+Execute Action	2026-09-26T07:27:53.7572938Z POD-f8zxx  File "/opt/spark/python/lib/pyspark.zip/pyspark/sql/session.py", line 1810, in sql
+Execute Action	2026-09-26T07:27:53.7573905Z POD-f8zxx    return DataFrame(self._jsparkSession.sql(sqlQuery, litArgs), self)
+Execute Action	2026-09-26T07:27:53.7574934Z POD-f8zxx  File "/opt/spark/python/lib/py4j-0.10.9.9-src.zip/py4j/java_gateway.py", line 1362, in __call__
+Execute Action	2026-09-26T07:27:53.7575828Z POD-f8zxx    return_value = get_return_value(
+Execute Action	2026-09-26T07:27:53.7576748Z POD-f8zxx  File "/opt/spark/python/lib/pyspark.zip/pyspark/errors/exceptions/captured.py", line 282, in deco
+Execute Action	2026-09-26T07:27:53.7577620Z POD-f8zxx    return f(*a, **kw)
+Execute Action	2026-09-26T07:27:53.7578486Z POD-f8zxx  File "/opt/spark/python/lib/py4j-0.10.9.9-src.zip/py4j/protocol.py", line 327, in get_return_value
+Execute Action	2026-09-26T07:27:53.7579371Z POD-f8zxx    raise Py4JJavaError(
+Execute Action	2026-09-26T07:27:53.7580268Z POD-f8zxxpy4j.protocol.Py4JJavaError: An error occurred while calling o68.sql.
+Execute Action	2026-09-26T07:27:53.7582007Z POD-f8zxx: org.apache.iceberg.exceptions.ForbiddenException: Forbidden: The request signature we calculated does not match the signature you provided. Check your AWS secret access key and signing method. For more information, see REST Authentication and SOAP Authentication for details.
+Execute Action	2026-09-26T07:27:53.7583993Z POD-f8zxx	at org.apache.iceberg.rest.ErrorHandlers$DefaultErrorHandler.accept(ErrorHandlers.java:345)
+Execute Action	2026-09-26T07:27:53.7585751Z POD-f8zxx	at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:285)
+Execute Action	2026-09-26T07:27:53.7587600Z POD-f8zxx	at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:266)
+Execute Action	2026-09-26T07:27:53.7589369Z POD-f8zxx	at org.apache.iceberg.rest.HTTPClient.throwFailure(HTTPClient.java:242)
+Execute Action	2026-09-26T07:27:53.7591087Z POD-f8zxx	at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:347)
+Execute Action	2026-09-26T07:27:53.7592387Z POD-f8zxx	at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:299)
+Execute Action	2026-09-26T07:27:53.7593340Z POD-f8zxx	at org.apache.iceberg.rest.BaseHTTPClient.get(BaseHTTPClient.java:77)
+Execute Action	2026-09-26T07:27:53.7594383Z POD-f8zxx	at org.apache.iceberg.rest.RESTSessionCatalog.listTables(RESTSessionCatalog.java:325)
+Execute Action	2026-09-26T07:27:53.7595520Z POD-f8zxx	at org.apache.iceberg.catalog.BaseSessionCatalog$AsCatalog.listTables(BaseSessionCatalog.java:79)
+Execute Action	2026-09-26T07:27:53.7596605Z POD-f8zxx	at org.apache.iceberg.rest.RESTCatalog.listTables(RESTCatalog.java:114)
+Execute Action	2026-09-26T07:27:53.7597781Z POD-f8zxx	at org.apache.iceberg.CachingCatalog.listTables(CachingCatalog.java:136)
+Execute Action	2026-09-26T07:27:53.7598780Z POD-f8zxx	at org.apache.iceberg.spark.SparkCatalog.listTables(SparkCatalog.java:428)
+Execute Action	2026-09-26T07:27:53.7600019Z POD-f8zxx	at org.apache.spark.sql.execution.datasources.v2.ShowTablesExec.run(ShowTablesExec.scala:40)
+Execute Action	2026-09-26T07:27:53.7601209Z POD-f8zxx	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result$lzycompute(V2CommandExec.scala:43)
+Execute Action	2026-09-26T07:27:53.7602403Z POD-f8zxx	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result(V2CommandExec.scala:43)
+Execute Action	2026-09-26T07:27:53.7603615Z POD-f8zxx	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.executeCollect(V2CommandExec.scala:49)
+Execute Action	2026-09-26T07:27:53.7604857Z POD-f8zxx	at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$2(QueryExecution.scala:155)
+Execute Action	2026-09-26T07:27:53.7606062Z POD-f8zxx	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$8(SQLExecution.scala:163)
+Execute Action	2026-09-26T07:27:53.7607228Z POD-f8zxx	at org.apache.spark.sql.execution.SQLExecution$.withSessionTagsApplied(SQLExecution.scala:272)
+Execute Action	2026-09-26T07:27:53.7608387Z POD-f8zxx	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$7(SQLExecution.scala:125)
+Execute Action	2026-09-26T07:27:53.7609523Z POD-f8zxx	at org.apache.spark.JobArtifactSet$.withActiveJobArtifactState(JobArtifactSet.scala:94)
+Execute Action	2026-09-26T07:27:53.7610797Z POD-f8zxx	at org.apache.spark.sql.artifact.ArtifactManager.$anonfun$withResources$1(ArtifactManager.scala:112)
+Execute Action	2026-09-26T07:27:53.7611998Z POD-f8zxx	at org.apache.spark.sql.artifact.ArtifactManager.withClassLoaderIfNeeded(ArtifactManager.scala:106)
+Execute Action	2026-09-26T07:27:53.7613186Z POD-f8zxx	at org.apache.spark.sql.artifact.ArtifactManager.withResources(ArtifactManager.scala:111)
+Execute Action	2026-09-26T07:27:53.7614347Z POD-f8zxx	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$6(SQLExecution.scala:125)
+Execute Action	2026-09-26T07:27:53.7615496Z POD-f8zxx	at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:295)
+Execute Action	2026-09-26T07:27:53.7616650Z POD-f8zxx	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$1(SQLExecution.scala:124)
+Execute Action	2026-09-26T07:27:53.7617751Z POD-f8zxx	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+Execute Action	2026-09-26T07:27:53.7618791Z POD-f8zxx	at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId0(SQLExecution.scala:78)
+Execute Action	2026-09-26T07:27:53.7619957Z POD-f8zxx	at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:237)
+Execute Action	2026-09-26T07:27:53.7631421Z POD-f8zxx	at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$1(QueryExecution.scala:155)
+Execute Action	2026-09-26T07:27:53.7632754Z POD-f8zxx	at org.apache.spark.sql.execution.QueryExecution$.withInternalError(QueryExecution.scala:654)
+Execute Action	2026-09-26T07:27:53.7634245Z POD-f8zxx	at org.apache.spark.sql.execution.QueryExecution.org$apache$spark$sql$execution$QueryExecution$$eagerlyExecute$1(QueryExecution.scala:154)
+Execute Action	2026-09-26T07:27:53.7635638Z POD-f8zxx	at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:169)
+Execute Action	2026-09-26T07:27:53.7636980Z POD-f8zxx	at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:164)
+Execute Action	2026-09-26T07:27:53.7638251Z POD-f8zxx	at org.apache.spark.sql.catalyst.trees.TreeNode.$anonfun$transformDownWithPruning$1(TreeNode.scala:470)
+Execute Action	2026-09-26T07:27:53.7639397Z POD-f8zxx	at org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:86)
+Execute Action	2026-09-26T07:27:53.7640820Z POD-f8zxx	at org.apache.spark.sql.catalyst.trees.TreeNode.transformDownWithPruning(TreeNode.scala:470)
+Execute Action	2026-09-26T07:27:53.7642271Z POD-f8zxx	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.org$apache$spark$sql$catalyst$plans$logical$AnalysisHelper$$super$transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:53.7643821Z POD-f8zxx	at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning(AnalysisHelper.scala:360)
+Execute Action	2026-09-26T07:27:53.7645208Z POD-f8zxx	at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning$(AnalysisHelper.scala:356)
+Execute Action	2026-09-26T07:27:53.7646547Z POD-f8zxx	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:53.7647937Z POD-f8zxx	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:53.7649121Z POD-f8zxx	at org.apache.spark.sql.catalyst.trees.TreeNode.transformDown(TreeNode.scala:446)
+Execute Action	2026-09-26T07:27:53.7650349Z POD-f8zxx	at org.apache.spark.sql.execution.QueryExecution.eagerlyExecuteCommands(QueryExecution.scala:164)
+Execute Action	2026-09-26T07:27:53.7651564Z POD-f8zxx	at org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyCommandExecuted$1(QueryExecution.scala:126)
+Execute Action	2026-09-26T07:27:53.7652552Z POD-f8zxx	at scala.util.Try$.apply(Try.scala:217)
+Execute Action	2026-09-26T07:27:53.7653450Z POD-f8zxx	at org.apache.spark.util.Utils$.doTryWithCallerStacktrace(Utils.scala:1378)
+Execute Action	2026-09-26T07:27:53.7654462Z POD-f8zxx	at org.apache.spark.util.Utils$.getTryWithCallerStacktrace(Utils.scala:1439)
+Execute Action	2026-09-26T07:27:53.7655385Z POD-f8zxx	at org.apache.spark.util.LazyTry.get(LazyTry.scala:58)
+Execute Action	2026-09-26T07:27:53.7656389Z POD-f8zxx	at org.apache.spark.sql.execution.QueryExecution.commandExecuted(QueryExecution.scala:131)
+Execute Action	2026-09-26T07:27:53.7657499Z POD-f8zxx	at org.apache.spark.sql.classic.Dataset.<init>(Dataset.scala:277)
+Execute Action	2026-09-26T07:27:53.7658460Z POD-f8zxx	at org.apache.spark.sql.classic.Dataset$.$anonfun$ofRows$5(Dataset.scala:140)
+Execute Action	2026-09-26T07:27:53.7659453Z POD-f8zxx	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+Execute Action	2026-09-26T07:27:53.7660488Z POD-f8zxx	at org.apache.spark.sql.classic.Dataset$.ofRows(Dataset.scala:136)
+Execute Action	2026-09-26T07:27:53.7661556Z POD-f8zxx	at org.apache.spark.sql.classic.SparkSession.$anonfun$sql$1(SparkSession.scala:462)
+Execute Action	2026-09-26T07:27:53.7662577Z POD-f8zxx	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+Execute Action	2026-09-26T07:27:53.7663561Z POD-f8zxx	at org.apache.spark.sql.classic.SparkSession.sql(SparkSession.scala:449)
+Execute Action	2026-09-26T07:27:53.7664558Z POD-f8zxx	at org.apache.spark.sql.classic.SparkSession.sql(SparkSession.scala:467)
+Execute Action	2026-09-26T07:27:53.7665594Z POD-f8zxx	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+Execute Action	2026-09-26T07:27:53.7666738Z POD-f8zxx	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+Execute Action	2026-09-26T07:27:53.7667986Z POD-f8zxx	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+Execute Action	2026-09-26T07:27:53.7669074Z POD-f8zxx	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+Execute Action	2026-09-26T07:27:53.7670051Z POD-f8zxx	at py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)
+Execute Action	2026-09-26T07:27:53.7670995Z POD-f8zxx	at py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)
+Execute Action	2026-09-26T07:27:53.7671872Z POD-f8zxx	at py4j.Gateway.invoke(Gateway.java:282)
+Execute Action	2026-09-26T07:27:53.7672744Z POD-f8zxx	at py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)
+Execute Action	2026-09-26T07:27:53.7674404Z POD-f8zxx	at py4j.commands.CallCommand.execute(CallCommand.java:79)
+Execute Action	2026-09-26T07:27:53.7675970Z POD-f8zxx	at py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:184)
+Execute Action	2026-09-26T07:27:53.7677589Z POD-f8zxx	at py4j.ClientServerConnection.run(ClientServerConnection.java:108)
+Execute Action	2026-09-26T07:27:53.7678543Z POD-f8zxx	at java.base/java.lang.Thread.run(Thread.java:840)
+Execute Action	2026-09-26T07:27:53.7679658Z POD-f8zxx	Suppressed: org.apache.spark.util.Utils$OriginalTryStackTraceException: Full stacktrace of original doTryWithCallerStacktrace caller
+Execute Action	2026-09-26T07:27:53.7681231Z POD-f8zxx		at org.apache.iceberg.rest.ErrorHandlers$DefaultErrorHandler.accept(ErrorHandlers.java:345)
+Execute Action	2026-09-26T07:27:53.7682404Z POD-f8zxx		at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:285)
+Execute Action	2026-09-26T07:27:53.7683541Z POD-f8zxx		at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:266)
+Execute Action	2026-09-26T07:27:53.7684601Z POD-f8zxx		at org.apache.iceberg.rest.HTTPClient.throwFailure(HTTPClient.java:242)
+Execute Action	2026-09-26T07:27:53.7685567Z POD-f8zxx		at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:347)
+Execute Action	2026-09-26T07:27:53.7686512Z POD-f8zxx		at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:299)
+Execute Action	2026-09-26T07:27:53.7687474Z POD-f8zxx		at org.apache.iceberg.rest.BaseHTTPClient.get(BaseHTTPClient.java:77)
+Execute Action	2026-09-26T07:27:53.7688669Z POD-f8zxx		at org.apache.iceberg.rest.RESTSessionCatalog.listTables(RESTSessionCatalog.java:325)
+Execute Action	2026-09-26T07:27:53.7689897Z POD-f8zxx		at org.apache.iceberg.catalog.BaseSessionCatalog$AsCatalog.listTables(BaseSessionCatalog.java:79)
+Execute Action	2026-09-26T07:27:53.7690979Z POD-f8zxx		at org.apache.iceberg.rest.RESTCatalog.listTables(RESTCatalog.java:114)
+Execute Action	2026-09-26T07:27:53.7691960Z POD-f8zxx		at org.apache.iceberg.CachingCatalog.listTables(CachingCatalog.java:136)
+Execute Action	2026-09-26T07:27:53.7692957Z POD-f8zxx		at org.apache.iceberg.spark.SparkCatalog.listTables(SparkCatalog.java:428)
+Execute Action	2026-09-26T07:27:53.7694042Z POD-f8zxx		at org.apache.spark.sql.execution.datasources.v2.ShowTablesExec.run(ShowTablesExec.scala:40)
+Execute Action	2026-09-26T07:27:53.7695242Z POD-f8zxx		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result$lzycompute(V2CommandExec.scala:43)
+Execute Action	2026-09-26T07:27:53.7696458Z POD-f8zxx		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result(V2CommandExec.scala:43)
+Execute Action	2026-09-26T07:27:53.7697676Z POD-f8zxx		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.executeCollect(V2CommandExec.scala:49)
+Execute Action	2026-09-26T07:27:53.7698919Z POD-f8zxx		at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$2(QueryExecution.scala:155)
+Execute Action	2026-09-26T07:27:53.7700195Z POD-f8zxx		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$8(SQLExecution.scala:163)
+Execute Action	2026-09-26T07:27:53.7701459Z POD-f8zxx		at org.apache.spark.sql.execution.SQLExecution$.withSessionTagsApplied(SQLExecution.scala:272)
+Execute Action	2026-09-26T07:27:53.7702634Z POD-f8zxx		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$7(SQLExecution.scala:125)
+Execute Action	2026-09-26T07:27:53.7703786Z POD-f8zxx		at org.apache.spark.JobArtifactSet$.withActiveJobArtifactState(JobArtifactSet.scala:94)
+Execute Action	2026-09-26T07:27:53.7704927Z POD-f8zxx		at org.apache.spark.sql.artifact.ArtifactManager.$anonfun$withResources$1(ArtifactManager.scala:112)
+Execute Action	2026-09-26T07:27:53.7706129Z POD-f8zxx		at org.apache.spark.sql.artifact.ArtifactManager.withClassLoaderIfNeeded(ArtifactManager.scala:106)
+Execute Action	2026-09-26T07:27:53.7707313Z POD-f8zxx		at org.apache.spark.sql.artifact.ArtifactManager.withResources(ArtifactManager.scala:111)
+Execute Action	2026-09-26T07:27:53.7708484Z POD-f8zxx		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$6(SQLExecution.scala:125)
+Execute Action	2026-09-26T07:27:53.7709651Z POD-f8zxx		at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:295)
+Execute Action	2026-09-26T07:27:53.7710867Z POD-f8zxx		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$1(SQLExecution.scala:124)
+Execute Action	2026-09-26T07:27:53.7711957Z POD-f8zxx		at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+Execute Action	2026-09-26T07:27:53.7713008Z POD-f8zxx		at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId0(SQLExecution.scala:78)
+Execute Action	2026-09-26T07:27:53.7714112Z POD-f8zxx		at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:237)
+Execute Action	2026-09-26T07:27:53.7715338Z POD-f8zxx		at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$1(QueryExecution.scala:155)
+Execute Action	2026-09-26T07:27:53.7716531Z POD-f8zxx		at org.apache.spark.sql.execution.QueryExecution$.withInternalError(QueryExecution.scala:654)
+Execute Action	2026-09-26T07:27:53.7717817Z POD-f8zxx		at org.apache.spark.sql.execution.QueryExecution.org$apache$spark$sql$execution$QueryExecution$$eagerlyExecute$1(QueryExecution.scala:154)
+Execute Action	2026-09-26T07:27:53.7719196Z POD-f8zxx		at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:169)
+Execute Action	2026-09-26T07:27:53.7720590Z POD-f8zxx		at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:164)
+Execute Action	2026-09-26T07:27:53.7721856Z POD-f8zxx		at org.apache.spark.sql.catalyst.trees.TreeNode.$anonfun$transformDownWithPruning$1(TreeNode.scala:470)
+Execute Action	2026-09-26T07:27:53.7722982Z POD-f8zxx		at org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:86)
+Execute Action	2026-09-26T07:27:53.7724113Z POD-f8zxx		at org.apache.spark.sql.catalyst.trees.TreeNode.transformDownWithPruning(TreeNode.scala:470)
+Execute Action	2026-09-26T07:27:53.7725548Z POD-f8zxx		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.org$apache$spark$sql$catalyst$plans$logical$AnalysisHelper$$super$transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:53.7727143Z POD-f8zxx		at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning(AnalysisHelper.scala:360)
+Execute Action	2026-09-26T07:27:53.7728511Z POD-f8zxx		at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning$(AnalysisHelper.scala:356)
+Execute Action	2026-09-26T07:27:53.7729889Z POD-f8zxx		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:53.7731197Z POD-f8zxx		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:53.7732377Z POD-f8zxx		at org.apache.spark.sql.catalyst.trees.TreeNode.transformDown(TreeNode.scala:446)
+Execute Action	2026-09-26T07:27:53.7733518Z POD-f8zxx		at org.apache.spark.sql.execution.QueryExecution.eagerlyExecuteCommands(QueryExecution.scala:164)
+Execute Action	2026-09-26T07:27:53.7734734Z POD-f8zxx		at org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyCommandExecuted$1(QueryExecution.scala:126)
+Execute Action	2026-09-26T07:27:53.7735740Z POD-f8zxx		at scala.util.Try$.apply(Try.scala:217)
+Execute Action	2026-09-26T07:27:53.7736610Z POD-f8zxx		at org.apache.spark.util.Utils$.doTryWithCallerStacktrace(Utils.scala:1378)
+Execute Action	2026-09-26T07:27:53.7737574Z POD-f8zxx		at org.apache.spark.util.LazyTry.tryT$lzycompute(LazyTry.scala:46)
+Execute Action	2026-09-26T07:27:53.7738482Z POD-f8zxx		at org.apache.spark.util.LazyTry.tryT(LazyTry.scala:46)
+Execute Action	2026-09-26T07:27:53.7739199Z POD-f8zxx		... 22 more
+Execute Action	2026-09-26T07:27:53.7739792Z POD-f8zxx
+Execute Action	2026-09-26T07:27:53.7740735Z POD-f8zxx26/09/26 07:27:15 INFO SparkContext: SparkContext is stopping with exitCode 0 from stop at NativeMethodAccessorImpl.java:0.
+Execute Action	2026-09-26T07:27:53.7741964Z POD-f8zxx26/09/26 07:27:15 INFO SparkUI: Stopped Spark web UI at http://manual-maintenance-20260926-072653-f8zxx:4040
+Execute Action	2026-09-26T07:27:53.7743088Z POD-f8zxx26/09/26 07:27:15 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+Execute Action	2026-09-26T07:27:53.7744104Z POD-f8zxx26/09/26 07:27:15 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+Execute Action	2026-09-26T07:27:53.7744986Z POD-f8zxx26/09/26 07:27:15 INFO MemoryStore: MemoryStore cleared
+Execute Action	2026-09-26T07:27:53.7745811Z POD-f8zxx26/09/26 07:27:15 INFO BlockManager: BlockManager stopped
+Execute Action	2026-09-26T07:27:53.7746678Z POD-f8zxx26/09/26 07:27:15 INFO BlockManagerMaster: BlockManagerMaster stopped
+Execute Action	2026-09-26T07:27:53.7747731Z POD-f8zxx26/09/26 07:27:15 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+Execute Action	2026-09-26T07:27:53.7748794Z POD-f8zxx26/09/26 07:27:15 INFO SparkContext: Successfully stopped SparkContext
+Execute Action	2026-09-26T07:27:53.9382064Z POD-f8zxx26/09/26 07:27:15 INFO ShutdownHookManager: Shutdown hook called
+Execute Action	2026-09-26T07:27:53.9383540Z POD-f8zxx26/09/26 07:27:15 INFO ShutdownHookManager: Deleting directory /tmp/spark-fc7b1590-f675-450e-b652-a18eacdf861b
+Execute Action	2026-09-26T07:27:53.9385374Z POD-f8zxx26/09/26 07:27:15 INFO ShutdownHookManager: Deleting directory /tmp/spark-dbe1c0f6-9445-4b43-8a95-acca194127ca/pyspark-aafffdfd-10bb-43b0-9353-67d0b702c032
+Execute Action	2026-09-26T07:27:53.9387528Z POD-f8zxx26/09/26 07:27:15 INFO ShutdownHookManager: Deleting directory /tmp/spark-dbe1c0f6-9445-4b43-8a95-acca194127ca
+Execute Action	2026-09-26T07:27:53.9389193Z POD-f8zxx26/09/26 07:27:15 INFO ShutdownHookManager: Deleting directory /tmp/artifacts-156a9b65-4d76-48dc-89d9-af0a6579bbaf
+Execute Action	2026-09-26T07:27:53.9391352Z → kubectl logs pod/manual-maintenance-20260926-072653-vz4zk --tail=2000
+Execute Action	2026-09-26T07:27:56.0978882Z POD-vz4zkWARNING: Using incubator modules: jdk.incubator.vector
+Execute Action	2026-09-26T07:27:56.0981148Z POD-vz4zkUsing Spark's default log4j profile: org/apache/spark/log4j2-defaults.properties
+Execute Action	2026-09-26T07:27:56.0983373Z POD-vz4zk26/09/26 07:27:28 INFO SparkContext: Running Spark version 4.0.4
+Execute Action	2026-09-26T07:27:56.0985172Z POD-vz4zk26/09/26 07:27:28 INFO SparkContext: OS info Linux, 7.0.0-34-generic, amd64
+Execute Action	2026-09-26T07:27:56.0987059Z POD-vz4zk26/09/26 07:27:28 INFO SparkContext: Java version 17.0.19
+Execute Action	2026-09-26T07:27:56.0989162Z POD-vz4zk26/09/26 07:27:28 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Execute Action	2026-09-26T07:27:56.0991718Z POD-vz4zk26/09/26 07:27:28 INFO ResourceUtils: ==============================================================
+Execute Action	2026-09-26T07:27:56.0993907Z POD-vz4zk26/09/26 07:27:28 INFO ResourceUtils: No custom resources configured for spark.driver.
+Execute Action	2026-09-26T07:27:56.0995593Z POD-vz4zk26/09/26 07:27:28 INFO ResourceUtils: ==============================================================
+Execute Action	2026-09-26T07:27:56.0997762Z POD-vz4zk26/09/26 07:27:28 INFO SparkContext: Submitted application: iceberg-maintenance
+Execute Action	2026-09-26T07:27:56.1001576Z POD-vz4zk26/09/26 07:27:28 INFO ResourceProfile: Default ResourceProfile created, executor resources: Map(cores -> name: cores, amount: 1, script: , vendor: , memory -> name: memory, amount: 1024, script: , vendor: , offHeap -> name: offHeap, amount: 0, script: , vendor: ), task resources: Map(cpus -> name: cpus, amount: 1.0)
+Execute Action	2026-09-26T07:27:56.1003871Z POD-vz4zk26/09/26 07:27:28 INFO ResourceProfile: Limiting resource is cpu
+Execute Action	2026-09-26T07:27:56.1005605Z POD-vz4zk26/09/26 07:27:28 INFO ResourceProfileManager: Added ResourceProfile id: 0
+Execute Action	2026-09-26T07:27:56.1007663Z POD-vz4zk26/09/26 07:27:28 INFO SecurityManager: Changing view acls to: spark
+Execute Action	2026-09-26T07:27:56.1008980Z POD-vz4zk26/09/26 07:27:28 INFO SecurityManager: Changing modify acls to: spark
+Execute Action	2026-09-26T07:27:56.1010299Z POD-vz4zk26/09/26 07:27:28 INFO SecurityManager: Changing view acls groups to: spark
+Execute Action	2026-09-26T07:27:56.1011427Z POD-vz4zk26/09/26 07:27:28 INFO SecurityManager: Changing modify acls groups to: spark
+Execute Action	2026-09-26T07:27:56.1013299Z POD-vz4zk26/09/26 07:27:28 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: spark groups with view permissions: EMPTY; users with modify permissions: spark; groups with modify permissions: EMPTY; RPC SSL disabled
+Execute Action	2026-09-26T07:27:56.1015433Z POD-vz4zk26/09/26 07:27:29 INFO Utils: Successfully started service 'sparkDriver' on port 35231.
+Execute Action	2026-09-26T07:27:56.1016579Z POD-vz4zk26/09/26 07:27:29 INFO SparkEnv: Registering MapOutputTracker
+Execute Action	2026-09-26T07:27:56.1017616Z POD-vz4zk26/09/26 07:27:29 INFO SparkEnv: Registering BlockManagerMaster
+Execute Action	2026-09-26T07:27:56.1018982Z POD-vz4zk26/09/26 07:27:29 INFO BlockManagerMasterEndpoint: Using org.apache.spark.storage.DefaultTopologyMapper for getting topology information
+Execute Action	2026-09-26T07:27:56.1020509Z POD-vz4zk26/09/26 07:27:29 INFO BlockManagerMasterEndpoint: BlockManagerMasterEndpoint up
+Execute Action	2026-09-26T07:27:56.1021668Z POD-vz4zk26/09/26 07:27:29 INFO SparkEnv: Registering BlockManagerMasterHeartbeat
+Execute Action	2026-09-26T07:27:56.1022961Z POD-vz4zk26/09/26 07:27:29 INFO DiskBlockManager: Created local directory at /tmp/blockmgr-bee215d6-6731-4bb9-bb3d-d35649c6bfc3
+Execute Action	2026-09-26T07:27:56.1024242Z POD-vz4zk26/09/26 07:27:29 INFO SparkEnv: Registering OutputCommitCoordinator
+Execute Action	2026-09-26T07:27:56.1025310Z POD-vz4zk26/09/26 07:27:29 INFO JettyUtils: Start Jetty 0.0.0.0:4040 for SparkUI
+Execute Action	2026-09-26T07:27:56.1026426Z POD-vz4zk26/09/26 07:27:29 INFO Utils: Successfully started service 'SparkUI' on port 4040.
+Execute Action	2026-09-26T07:27:56.1027559Z POD-vz4zk26/09/26 07:27:29 INFO SecurityManager: Changing view acls to: spark
+Execute Action	2026-09-26T07:27:56.1028630Z POD-vz4zk26/09/26 07:27:29 INFO SecurityManager: Changing modify acls to: spark
+Execute Action	2026-09-26T07:27:56.1029638Z POD-vz4zk26/09/26 07:27:29 INFO SecurityManager: Changing view acls groups to: spark
+Execute Action	2026-09-26T07:27:56.1030632Z POD-vz4zk26/09/26 07:27:29 INFO SecurityManager: Changing modify acls groups to: spark
+Execute Action	2026-09-26T07:27:56.1032183Z POD-vz4zk26/09/26 07:27:29 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: spark groups with view permissions: EMPTY; users with modify permissions: spark; groups with modify permissions: EMPTY; RPC SSL disabled
+Execute Action	2026-09-26T07:27:56.1033845Z POD-vz4zk26/09/26 07:27:29 INFO Executor: Starting executor ID driver on host manual-maintenance-20260926-072653-vz4zk
+Execute Action	2026-09-26T07:27:56.1034852Z POD-vz4zk26/09/26 07:27:29 INFO Executor: OS info Linux, 7.0.0-34-generic, amd64
+Execute Action	2026-09-26T07:27:56.1035708Z POD-vz4zk26/09/26 07:27:29 INFO Executor: Java version 17.0.19
+Execute Action	2026-09-26T07:27:56.1036666Z POD-vz4zk26/09/26 07:27:29 INFO Executor: Starting executor with user classpath (userClassPathFirst = false): ''
+Execute Action	2026-09-26T07:27:56.1037879Z POD-vz4zk26/09/26 07:27:29 INFO Executor: Created or updated repl class loader org.apache.spark.util.MutableURLClassLoader@460f7f85 for default.
+Execute Action	2026-09-26T07:27:56.1039228Z POD-vz4zk26/09/26 07:27:29 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 46539.
+Execute Action	2026-09-26T07:27:56.1040585Z POD-vz4zk26/09/26 07:27:29 INFO NettyBlockTransferService: Server created on manual-maintenance-20260926-072653-vz4zk:46539
+Execute Action	2026-09-26T07:27:56.1041919Z POD-vz4zk26/09/26 07:27:29 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+Execute Action	2026-09-26T07:27:56.1043291Z POD-vz4zk26/09/26 07:27:29 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, manual-maintenance-20260926-072653-vz4zk, 46539, None)
+Execute Action	2026-09-26T07:27:56.1044946Z POD-vz4zk26/09/26 07:27:29 INFO BlockManagerMasterEndpoint: Registering block manager manual-maintenance-20260926-072653-vz4zk:46539 with 434.4 MiB RAM, BlockManagerId(driver, manual-maintenance-20260926-072653-vz4zk, 46539, None)
+Execute Action	2026-09-26T07:27:56.1046602Z POD-vz4zk26/09/26 07:27:29 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, manual-maintenance-20260926-072653-vz4zk, 46539, None)
+Execute Action	2026-09-26T07:27:56.1048054Z POD-vz4zk26/09/26 07:27:29 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, manual-maintenance-20260926-072653-vz4zk, 46539, None)
+Execute Action	2026-09-26T07:27:56.1049391Z POD-vz4zk26/09/26 07:27:32 INFO SharedState: Setting hive.metastore.warehouse.dir ('null') to the value of spark.sql.warehouse.dir.
+Execute Action	2026-09-26T07:27:56.1050602Z POD-vz4zk26/09/26 07:27:32 INFO SharedState: Warehouse path is 'file:/opt/spark/work-dir/spark-warehouse'.
+Execute Action	2026-09-26T07:27:56.1051669Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake=org.apache.iceberg.spark.SparkCatalog
+Execute Action	2026-09-26T07:27:56.1052698Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.client.access-key-id=<len 5>
+Execute Action	2026-09-26T07:27:56.1053674Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.client.region=us-east-1
+Execute Action	2026-09-26T07:27:56.1054735Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.client.secret-access-key=<len 16>
+Execute Action	2026-09-26T07:27:56.1055790Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.io-impl=org.apache.iceberg.aws.s3.S3FileIO
+Execute Action	2026-09-26T07:27:56.1056817Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.rest.access-key-id=<len 5>
+Execute Action	2026-09-26T07:27:56.1057817Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.rest.secret-access-key=<len 16>
+Execute Action	2026-09-26T07:27:56.1058830Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.rest.signing-name=s3
+Execute Action	2026-09-26T07:27:56.1059868Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.rest.signing-region=us-east-1
+Execute Action	2026-09-26T07:27:56.1060870Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.rest.sigv4-enabled=true
+Execute Action	2026-09-26T07:27:56.1061829Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.s3.access-key-id=<len 5>
+Execute Action	2026-09-26T07:27:56.1062930Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.s3.endpoint=http://rustfs-svc.rustfs.svc.cluster.local:9000
+Execute Action	2026-09-26T07:27:56.1064029Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.s3.path-style-access=true
+Execute Action	2026-09-26T07:27:56.1064996Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.s3.region=us-east-1
+Execute Action	2026-09-26T07:27:56.1065952Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.s3.secret-access-key=<len 16>
+Execute Action	2026-09-26T07:27:56.1066942Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.type=rest
+Execute Action	2026-09-26T07:27:56.1067973Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.uri=http://rustfs-svc.rustfs.svc.cluster.local:9000/iceberg
+Execute Action	2026-09-26T07:27:56.1069034Z POD-vz4zkDEBUG spark conf spark.sql.catalog.datalake.warehouse=datalake
+Execute Action	2026-09-26T07:27:56.1069918Z POD-vz4zkDEBUG env RUSTFS_ACCESS_KEY len=5
+Execute Action	2026-09-26T07:27:56.1070623Z POD-vz4zkDEBUG env RUSTFS_SECRET_KEY len=16
+Execute Action	2026-09-26T07:27:56.1071319Z POD-vz4zkDEBUG env AWS_ACCESS_KEY_ID len=5
+Execute Action	2026-09-26T07:27:56.1072030Z POD-vz4zkDEBUG env AWS_SECRET_ACCESS_KEY len=16
+Execute Action	2026-09-26T07:27:56.1072714Z POD-vz4zkDEBUG env AWS_REGION len=9
+Execute Action	2026-09-26T07:27:56.1073838Z POD-vz4zk26/09/26 07:27:32 WARN AuthManagers: The property rest.sigv4-enabled is deprecated and will be removed in a future release. Please use the property rest.auth.type=sigv4 instead.
+Execute Action	2026-09-26T07:27:56.1075225Z POD-vz4zk26/09/26 07:27:32 INFO AuthManagers: Loading AuthManager implementation: org.apache.iceberg.rest.auth.OAuth2Manager
+Execute Action	2026-09-26T07:27:56.1076488Z POD-vz4zk26/09/26 07:27:32 INFO AuthManagers: Loading AuthManager implementation: org.apache.iceberg.aws.RESTSigV4AuthManager
+Execute Action	2026-09-26T07:27:56.1077671Z POD-vz4zk26/09/26 07:27:33 INFO CatalogUtil: Loading custom FileIO implementation: org.apache.iceberg.aws.s3.S3FileIO
+Execute Action	2026-09-26T07:27:56.1078684Z POD-vz4zk26/09/26 07:27:34 INFO CodeGenerator: Code generated in 236.721094 ms
+Execute Action	2026-09-26T07:27:56.1079626Z POD-vz4zk26/09/26 07:27:34 INFO CodeGenerator: Code generated in 6.439527 ms
+Execute Action	2026-09-26T07:27:56.1080759Z POD-vz4zk❌ maintenance: table discovery failed
+Execute Action	2026-09-26T07:27:56.1081489Z POD-vz4zkTraceback (most recent call last):
+Execute Action	2026-09-26T07:27:56.1082366Z POD-vz4zk  File "/opt/maintenance/..2026_09_26_07_27_25.814036861/maintenance.py", line 237, in main
+Execute Action	2026-09-26T07:27:56.1083243Z POD-vz4zk    tables = discover_tables(spark)
+Execute Action	2026-09-26T07:27:56.1084157Z POD-vz4zk  File "/opt/maintenance/..2026_09_26_07_27_25.814036861/maintenance.py", line 56, in discover_tables
+Execute Action	2026-09-26T07:27:56.1085173Z POD-vz4zk    for t_row in spark.sql(f"SHOW TABLES IN {CATALOG}.{namespace}").collect():
+Execute Action	2026-09-26T07:27:56.1086170Z POD-vz4zk  File "/opt/spark/python/lib/pyspark.zip/pyspark/sql/session.py", line 1810, in sql
+Execute Action	2026-09-26T07:27:56.1087146Z POD-vz4zk    return DataFrame(self._jsparkSession.sql(sqlQuery, litArgs), self)
+Execute Action	2026-09-26T07:27:56.1088146Z POD-vz4zk  File "/opt/spark/python/lib/py4j-0.10.9.9-src.zip/py4j/java_gateway.py", line 1362, in __call__
+Execute Action	2026-09-26T07:27:56.1089038Z POD-vz4zk    return_value = get_return_value(
+Execute Action	2026-09-26T07:27:56.1090021Z POD-vz4zk  File "/opt/spark/python/lib/pyspark.zip/pyspark/errors/exceptions/captured.py", line 282, in deco
+Execute Action	2026-09-26T07:27:56.1090887Z POD-vz4zk    return f(*a, **kw)
+Execute Action	2026-09-26T07:27:56.1091851Z POD-vz4zk  File "/opt/spark/python/lib/py4j-0.10.9.9-src.zip/py4j/protocol.py", line 327, in get_return_value
+Execute Action	2026-09-26T07:27:56.1092728Z POD-vz4zk    raise Py4JJavaError(
+Execute Action	2026-09-26T07:27:56.1093536Z POD-vz4zkpy4j.protocol.Py4JJavaError: An error occurred while calling o68.sql.
+Execute Action	2026-09-26T07:27:56.1095174Z POD-vz4zk: org.apache.iceberg.exceptions.ForbiddenException: Forbidden: The request signature we calculated does not match the signature you provided. Check your AWS secret access key and signing method. For more information, see REST Authentication and SOAP Authentication for details.
+Execute Action	2026-09-26T07:27:56.1096898Z POD-vz4zk	at org.apache.iceberg.rest.ErrorHandlers$DefaultErrorHandler.accept(ErrorHandlers.java:345)
+Execute Action	2026-09-26T07:27:56.1098032Z POD-vz4zk	at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:285)
+Execute Action	2026-09-26T07:27:56.1099154Z POD-vz4zk	at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:266)
+Execute Action	2026-09-26T07:27:56.1100284Z POD-vz4zk	at org.apache.iceberg.rest.HTTPClient.throwFailure(HTTPClient.java:242)
+Execute Action	2026-09-26T07:27:56.1101265Z POD-vz4zk	at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:347)
+Execute Action	2026-09-26T07:27:56.1102205Z POD-vz4zk	at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:299)
+Execute Action	2026-09-26T07:27:56.1103161Z POD-vz4zk	at org.apache.iceberg.rest.BaseHTTPClient.get(BaseHTTPClient.java:77)
+Execute Action	2026-09-26T07:27:56.1104205Z POD-vz4zk	at org.apache.iceberg.rest.RESTSessionCatalog.listTables(RESTSessionCatalog.java:325)
+Execute Action	2026-09-26T07:27:56.1105442Z POD-vz4zk	at org.apache.iceberg.catalog.BaseSessionCatalog$AsCatalog.listTables(BaseSessionCatalog.java:79)
+Execute Action	2026-09-26T07:27:56.1106535Z POD-vz4zk	at org.apache.iceberg.rest.RESTCatalog.listTables(RESTCatalog.java:114)
+Execute Action	2026-09-26T07:27:56.1107526Z POD-vz4zk	at org.apache.iceberg.CachingCatalog.listTables(CachingCatalog.java:136)
+Execute Action	2026-09-26T07:27:56.1108525Z POD-vz4zk	at org.apache.iceberg.spark.SparkCatalog.listTables(SparkCatalog.java:428)
+Execute Action	2026-09-26T07:27:56.1109613Z POD-vz4zk	at org.apache.spark.sql.execution.datasources.v2.ShowTablesExec.run(ShowTablesExec.scala:40)
+Execute Action	2026-09-26T07:27:56.1110888Z POD-vz4zk	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result$lzycompute(V2CommandExec.scala:43)
+Execute Action	2026-09-26T07:27:56.1112089Z POD-vz4zk	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result(V2CommandExec.scala:43)
+Execute Action	2026-09-26T07:27:56.1113285Z POD-vz4zk	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.executeCollect(V2CommandExec.scala:49)
+Execute Action	2026-09-26T07:27:56.1114532Z POD-vz4zk	at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$2(QueryExecution.scala:155)
+Execute Action	2026-09-26T07:27:56.1115757Z POD-vz4zk	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$8(SQLExecution.scala:163)
+Execute Action	2026-09-26T07:27:56.1116925Z POD-vz4zk	at org.apache.spark.sql.execution.SQLExecution$.withSessionTagsApplied(SQLExecution.scala:272)
+Execute Action	2026-09-26T07:27:56.1118146Z POD-vz4zk	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$7(SQLExecution.scala:125)
+Execute Action	2026-09-26T07:27:56.1119273Z POD-vz4zk	at org.apache.spark.JobArtifactSet$.withActiveJobArtifactState(JobArtifactSet.scala:94)
+Execute Action	2026-09-26T07:27:56.1120488Z POD-vz4zk	at org.apache.spark.sql.artifact.ArtifactManager.$anonfun$withResources$1(ArtifactManager.scala:112)
+Execute Action	2026-09-26T07:27:56.1121679Z POD-vz4zk	at org.apache.spark.sql.artifact.ArtifactManager.withClassLoaderIfNeeded(ArtifactManager.scala:106)
+Execute Action	2026-09-26T07:27:56.1122852Z POD-vz4zk	at org.apache.spark.sql.artifact.ArtifactManager.withResources(ArtifactManager.scala:111)
+Execute Action	2026-09-26T07:27:56.1124007Z POD-vz4zk	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$6(SQLExecution.scala:125)
+Execute Action	2026-09-26T07:27:56.1125170Z POD-vz4zk	at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:295)
+Execute Action	2026-09-26T07:27:56.1126321Z POD-vz4zk	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$1(SQLExecution.scala:124)
+Execute Action	2026-09-26T07:27:56.1127413Z POD-vz4zk	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+Execute Action	2026-09-26T07:27:56.1128467Z POD-vz4zk	at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId0(SQLExecution.scala:78)
+Execute Action	2026-09-26T07:27:56.1129572Z POD-vz4zk	at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:237)
+Execute Action	2026-09-26T07:27:56.1130935Z POD-vz4zk	at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$1(QueryExecution.scala:155)
+Execute Action	2026-09-26T07:27:56.1132118Z POD-vz4zk	at org.apache.spark.sql.execution.QueryExecution$.withInternalError(QueryExecution.scala:654)
+Execute Action	2026-09-26T07:27:56.1133406Z POD-vz4zk	at org.apache.spark.sql.execution.QueryExecution.org$apache$spark$sql$execution$QueryExecution$$eagerlyExecute$1(QueryExecution.scala:154)
+Execute Action	2026-09-26T07:27:56.1134798Z POD-vz4zk	at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:169)
+Execute Action	2026-09-26T07:27:56.1136135Z POD-vz4zk	at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:164)
+Execute Action	2026-09-26T07:27:56.1137396Z POD-vz4zk	at org.apache.spark.sql.catalyst.trees.TreeNode.$anonfun$transformDownWithPruning$1(TreeNode.scala:470)
+Execute Action	2026-09-26T07:27:56.1138528Z POD-vz4zk	at org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:86)
+Execute Action	2026-09-26T07:27:56.1139658Z POD-vz4zk	at org.apache.spark.sql.catalyst.trees.TreeNode.transformDownWithPruning(TreeNode.scala:470)
+Execute Action	2026-09-26T07:27:56.1141155Z POD-vz4zk	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.org$apache$spark$sql$catalyst$plans$logical$AnalysisHelper$$super$transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:56.1142679Z POD-vz4zk	at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning(AnalysisHelper.scala:360)
+Execute Action	2026-09-26T07:27:56.1144133Z POD-vz4zk	at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning$(AnalysisHelper.scala:356)
+Execute Action	2026-09-26T07:27:56.1145469Z POD-vz4zk	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:56.1146764Z POD-vz4zk	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:56.1147942Z POD-vz4zk	at org.apache.spark.sql.catalyst.trees.TreeNode.transformDown(TreeNode.scala:446)
+Execute Action	2026-09-26T07:27:56.1149131Z POD-vz4zk	at org.apache.spark.sql.execution.QueryExecution.eagerlyExecuteCommands(QueryExecution.scala:164)
+Execute Action	2026-09-26T07:27:56.1150416Z POD-vz4zk	at org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyCommandExecuted$1(QueryExecution.scala:126)
+Execute Action	2026-09-26T07:27:56.1151406Z POD-vz4zk	at scala.util.Try$.apply(Try.scala:217)
+Execute Action	2026-09-26T07:27:56.1152281Z POD-vz4zk	at org.apache.spark.util.Utils$.doTryWithCallerStacktrace(Utils.scala:1378)
+Execute Action	2026-09-26T07:27:56.1153276Z POD-vz4zk	at org.apache.spark.util.Utils$.getTryWithCallerStacktrace(Utils.scala:1439)
+Execute Action	2026-09-26T07:27:56.1154209Z POD-vz4zk	at org.apache.spark.util.LazyTry.get(LazyTry.scala:58)
+Execute Action	2026-09-26T07:27:56.1155201Z POD-vz4zk	at org.apache.spark.sql.execution.QueryExecution.commandExecuted(QueryExecution.scala:131)
+Execute Action	2026-09-26T07:27:56.1156237Z POD-vz4zk	at org.apache.spark.sql.classic.Dataset.<init>(Dataset.scala:277)
+Execute Action	2026-09-26T07:27:56.1157271Z POD-vz4zk	at org.apache.spark.sql.classic.Dataset$.$anonfun$ofRows$5(Dataset.scala:140)
+Execute Action	2026-09-26T07:27:56.1158266Z POD-vz4zk	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+Execute Action	2026-09-26T07:27:56.1159227Z POD-vz4zk	at org.apache.spark.sql.classic.Dataset$.ofRows(Dataset.scala:136)
+Execute Action	2026-09-26T07:27:56.1160293Z POD-vz4zk	at org.apache.spark.sql.classic.SparkSession.$anonfun$sql$1(SparkSession.scala:462)
+Execute Action	2026-09-26T07:27:56.1161320Z POD-vz4zk	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+Execute Action	2026-09-26T07:27:56.1162300Z POD-vz4zk	at org.apache.spark.sql.classic.SparkSession.sql(SparkSession.scala:449)
+Execute Action	2026-09-26T07:27:56.1163307Z POD-vz4zk	at org.apache.spark.sql.classic.SparkSession.sql(SparkSession.scala:467)
+Execute Action	2026-09-26T07:27:56.1164341Z POD-vz4zk	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+Execute Action	2026-09-26T07:27:56.1165481Z POD-vz4zk	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+Execute Action	2026-09-26T07:27:56.1166722Z POD-vz4zk	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+Execute Action	2026-09-26T07:27:56.1167815Z POD-vz4zk	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+Execute Action	2026-09-26T07:27:56.1168727Z POD-vz4zk	at py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)
+Execute Action	2026-09-26T07:27:56.1169879Z POD-vz4zk	at py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)
+Execute Action	2026-09-26T07:27:56.1170744Z POD-vz4zk	at py4j.Gateway.invoke(Gateway.java:282)
+Execute Action	2026-09-26T07:27:56.1171626Z POD-vz4zk	at py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)
+Execute Action	2026-09-26T07:27:56.1172573Z POD-vz4zk	at py4j.commands.CallCommand.execute(CallCommand.java:79)
+Execute Action	2026-09-26T07:27:56.1173553Z POD-vz4zk	at py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:184)
+Execute Action	2026-09-26T07:27:56.1174575Z POD-vz4zk	at py4j.ClientServerConnection.run(ClientServerConnection.java:108)
+Execute Action	2026-09-26T07:27:56.1175456Z POD-vz4zk	at java.base/java.lang.Thread.run(Thread.java:840)
+Execute Action	2026-09-26T07:27:56.1176571Z POD-vz4zk	Suppressed: org.apache.spark.util.Utils$OriginalTryStackTraceException: Full stacktrace of original doTryWithCallerStacktrace caller
+Execute Action	2026-09-26T07:27:56.1177839Z POD-vz4zk		at org.apache.iceberg.rest.ErrorHandlers$DefaultErrorHandler.accept(ErrorHandlers.java:345)
+Execute Action	2026-09-26T07:27:56.1178959Z POD-vz4zk		at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:285)
+Execute Action	2026-09-26T07:27:56.1180154Z POD-vz4zk		at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:266)
+Execute Action	2026-09-26T07:27:56.1181211Z POD-vz4zk		at org.apache.iceberg.rest.HTTPClient.throwFailure(HTTPClient.java:242)
+Execute Action	2026-09-26T07:27:56.1182176Z POD-vz4zk		at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:347)
+Execute Action	2026-09-26T07:27:56.1183213Z POD-vz4zk		at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:299)
+Execute Action	2026-09-26T07:27:56.1184181Z POD-vz4zk		at org.apache.iceberg.rest.BaseHTTPClient.get(BaseHTTPClient.java:77)
+Execute Action	2026-09-26T07:27:56.1185213Z POD-vz4zk		at org.apache.iceberg.rest.RESTSessionCatalog.listTables(RESTSessionCatalog.java:325)
+Execute Action	2026-09-26T07:27:56.1186367Z POD-vz4zk		at org.apache.iceberg.catalog.BaseSessionCatalog$AsCatalog.listTables(BaseSessionCatalog.java:79)
+Execute Action	2026-09-26T07:27:56.1187454Z POD-vz4zk		at org.apache.iceberg.rest.RESTCatalog.listTables(RESTCatalog.java:114)
+Execute Action	2026-09-26T07:27:56.1188446Z POD-vz4zk		at org.apache.iceberg.CachingCatalog.listTables(CachingCatalog.java:136)
+Execute Action	2026-09-26T07:27:56.1189453Z POD-vz4zk		at org.apache.iceberg.spark.SparkCatalog.listTables(SparkCatalog.java:428)
+Execute Action	2026-09-26T07:27:56.1190614Z POD-vz4zk		at org.apache.spark.sql.execution.datasources.v2.ShowTablesExec.run(ShowTablesExec.scala:40)
+Execute Action	2026-09-26T07:27:56.1191818Z POD-vz4zk		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result$lzycompute(V2CommandExec.scala:43)
+Execute Action	2026-09-26T07:27:56.1193030Z POD-vz4zk		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result(V2CommandExec.scala:43)
+Execute Action	2026-09-26T07:27:56.1194240Z POD-vz4zk		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.executeCollect(V2CommandExec.scala:49)
+Execute Action	2026-09-26T07:27:56.1195583Z POD-vz4zk		at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$2(QueryExecution.scala:155)
+Execute Action	2026-09-26T07:27:56.1196815Z POD-vz4zk		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$8(SQLExecution.scala:163)
+Execute Action	2026-09-26T07:27:56.1197999Z POD-vz4zk		at org.apache.spark.sql.execution.SQLExecution$.withSessionTagsApplied(SQLExecution.scala:272)
+Execute Action	2026-09-26T07:27:56.1199170Z POD-vz4zk		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$7(SQLExecution.scala:125)
+Execute Action	2026-09-26T07:27:56.1200372Z POD-vz4zk		at org.apache.spark.JobArtifactSet$.withActiveJobArtifactState(JobArtifactSet.scala:94)
+Execute Action	2026-09-26T07:27:56.1201516Z POD-vz4zk		at org.apache.spark.sql.artifact.ArtifactManager.$anonfun$withResources$1(ArtifactManager.scala:112)
+Execute Action	2026-09-26T07:27:56.1202718Z POD-vz4zk		at org.apache.spark.sql.artifact.ArtifactManager.withClassLoaderIfNeeded(ArtifactManager.scala:106)
+Execute Action	2026-09-26T07:27:56.1203891Z POD-vz4zk		at org.apache.spark.sql.artifact.ArtifactManager.withResources(ArtifactManager.scala:111)
+Execute Action	2026-09-26T07:27:56.1205042Z POD-vz4zk		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$6(SQLExecution.scala:125)
+Execute Action	2026-09-26T07:27:56.1206194Z POD-vz4zk		at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:295)
+Execute Action	2026-09-26T07:27:56.1207343Z POD-vz4zk		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$1(SQLExecution.scala:124)
+Execute Action	2026-09-26T07:27:56.1208500Z POD-vz4zk		at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+Execute Action	2026-09-26T07:27:56.1209539Z POD-vz4zk		at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId0(SQLExecution.scala:78)
+Execute Action	2026-09-26T07:27:56.1210721Z POD-vz4zk		at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:237)
+Execute Action	2026-09-26T07:27:56.1211913Z POD-vz4zk		at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$1(QueryExecution.scala:155)
+Execute Action	2026-09-26T07:27:56.1213102Z POD-vz4zk		at org.apache.spark.sql.execution.QueryExecution$.withInternalError(QueryExecution.scala:654)
+Execute Action	2026-09-26T07:27:56.1214392Z POD-vz4zk		at org.apache.spark.sql.execution.QueryExecution.org$apache$spark$sql$execution$QueryExecution$$eagerlyExecute$1(QueryExecution.scala:154)
+Execute Action	2026-09-26T07:27:56.1215797Z POD-vz4zk		at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:169)
+Execute Action	2026-09-26T07:27:56.1217141Z POD-vz4zk		at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:164)
+Execute Action	2026-09-26T07:27:56.1218406Z POD-vz4zk		at org.apache.spark.sql.catalyst.trees.TreeNode.$anonfun$transformDownWithPruning$1(TreeNode.scala:470)
+Execute Action	2026-09-26T07:27:56.1219542Z POD-vz4zk		at org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:86)
+Execute Action	2026-09-26T07:27:56.1220736Z POD-vz4zk		at org.apache.spark.sql.catalyst.trees.TreeNode.transformDownWithPruning(TreeNode.scala:470)
+Execute Action	2026-09-26T07:27:56.1222228Z POD-vz4zk		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.org$apache$spark$sql$catalyst$plans$logical$AnalysisHelper$$super$transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:56.1223765Z POD-vz4zk		at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning(AnalysisHelper.scala:360)
+Execute Action	2026-09-26T07:27:56.1225132Z POD-vz4zk		at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning$(AnalysisHelper.scala:356)
+Execute Action	2026-09-26T07:27:56.1226471Z POD-vz4zk		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:56.1227763Z POD-vz4zk		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+Execute Action	2026-09-26T07:27:56.1228949Z POD-vz4zk		at org.apache.spark.sql.catalyst.trees.TreeNode.transformDown(TreeNode.scala:446)
+Execute Action	2026-09-26T07:27:56.1230156Z POD-vz4zk		at org.apache.spark.sql.execution.QueryExecution.eagerlyExecuteCommands(QueryExecution.scala:164)
+Execute Action	2026-09-26T07:27:56.1231370Z POD-vz4zk		at org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyCommandExecuted$1(QueryExecution.scala:126)
+Execute Action	2026-09-26T07:27:56.1232360Z POD-vz4zk		at scala.util.Try$.apply(Try.scala:217)
+Execute Action	2026-09-26T07:27:56.1233227Z POD-vz4zk		at org.apache.spark.util.Utils$.doTryWithCallerStacktrace(Utils.scala:1378)
+Execute Action	2026-09-26T07:27:56.1234189Z POD-vz4zk		at org.apache.spark.util.LazyTry.tryT$lzycompute(LazyTry.scala:46)
+Execute Action	2026-09-26T07:27:56.1235152Z POD-vz4zk		at org.apache.spark.util.LazyTry.tryT(LazyTry.scala:46)
+Execute Action	2026-09-26T07:27:56.1235874Z POD-vz4zk		... 22 more
+Execute Action	2026-09-26T07:27:56.1236401Z POD-vz4zk
+Execute Action	2026-09-26T07:27:56.1237265Z POD-vz4zk26/09/26 07:27:34 INFO SparkContext: SparkContext is stopping with exitCode 0 from stop at NativeMethodAccessorImpl.java:0.
+Execute Action	2026-09-26T07:27:56.1238476Z POD-vz4zk26/09/26 07:27:34 INFO SparkUI: Stopped Spark web UI at http://manual-maintenance-20260926-072653-vz4zk:4040
+Execute Action	2026-09-26T07:27:56.1239598Z POD-vz4zk26/09/26 07:27:34 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+Execute Action	2026-09-26T07:27:56.1240694Z POD-vz4zk26/09/26 07:27:34 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+Execute Action	2026-09-26T07:27:56.1241583Z POD-vz4zk26/09/26 07:27:34 INFO MemoryStore: MemoryStore cleared
+Execute Action	2026-09-26T07:27:56.1242402Z POD-vz4zk26/09/26 07:27:34 INFO BlockManager: BlockManager stopped
+Execute Action	2026-09-26T07:27:56.1243267Z POD-vz4zk26/09/26 07:27:34 INFO BlockManagerMaster: BlockManagerMaster stopped
+Execute Action	2026-09-26T07:27:56.1244340Z POD-vz4zk26/09/26 07:27:34 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+Execute Action	2026-09-26T07:27:56.1245405Z POD-vz4zk26/09/26 07:27:34 INFO SparkContext: Successfully stopped SparkContext
+Execute Action	2026-09-26T07:27:56.2957965Z POD-vz4zk26/09/26 07:27:34 INFO ShutdownHookManager: Shutdown hook called
+Execute Action	2026-09-26T07:27:56.2959556Z POD-vz4zk26/09/26 07:27:34 INFO ShutdownHookManager: Deleting directory /tmp/spark-2230809a-a595-4ebe-807d-023cddb0db2c
+Execute Action	2026-09-26T07:27:56.2962588Z POD-vz4zk26/09/26 07:27:34 INFO ShutdownHookManager: Deleting directory /tmp/spark-2230809a-a595-4ebe-807d-023cddb0db2c/pyspark-75094355-78f6-4658-84e9-b9ac665319f9
+Execute Action	2026-09-26T07:27:56.2965095Z POD-vz4zk26/09/26 07:27:34 INFO ShutdownHookManager: Deleting directory /tmp/spark-6ec68689-f476-4e76-a3a8-9953231a2782
+Execute Action	2026-09-26T07:27:56.2967359Z POD-vz4zk26/09/26 07:27:34 INFO ShutdownHookManager: Deleting directory /tmp/artifacts-38c96213-cdbd-4a3c-b777-f1992850374d

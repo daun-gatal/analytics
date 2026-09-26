@@ -384,10 +384,13 @@ jobs:
                   r = urllib.request.Request(url, headers=sent_headers)
                   with urllib.request.urlopen(r, timeout=30) as resp:
                       print(f"[{label}] HTTP {resp.status} signed={signed_headers_list}", flush=True)
-                      print("   body:", resp.read(160), flush=True)
+                      # load-table: dump the FULL body — the inline table
+                      # metadata JSON feeds the offline RustFS-validator diff
+                      limit = 100000 if label.startswith("load-table") else 160
+                      print("   body:", resp.read(limit), flush=True)
               except urllib.error.HTTPError as e:
                   print(f"[{label}] HTTP {e.code} signed={signed_headers_list}", flush=True)
-                  print("   body:", e.read(300), flush=True)
+                  print("   body:", e.read(1000), flush=True)
               except Exception as e:
                   print(f"[{label}] ERROR {e}", flush=True)
           PYEOF
@@ -433,8 +436,8 @@ jobs:
               kubectl get job "$JOB" -n analytics -o wide || true
               kubectl get pods -n analytics --selector="job-name=$JOB" -o wide || true
               for POD in $(kubectl get pods -n analytics --selector="job-name=$JOB" -o name); do
-                echo "→ kubectl logs $POD --tail=2000"
-                kubectl logs -n analytics "$POD" --tail=2000 --prefix=true || true
+                echo "→ kubectl logs $POD --tail=20000"
+                kubectl logs -n analytics "$POD" --tail=20000 --prefix=true || true
               done
 
               if [ -z "$JOB_OK" ]; then

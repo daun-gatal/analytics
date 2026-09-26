@@ -1,0 +1,654 @@
+execute	Execute Action	2026-09-26T07:52:30.1812117Z → kubectl logs pod/manual-maintenance-20260926-073725-ldxq4 --tail=2000
+execute	Execute Action	2026-09-26T07:52:31.4449432Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] Picked up JAVA_TOOL_OPTIONS: -Dlog4j2.configurationFile=/opt/maintenance/log4j2-wire.properties
+execute	Execute Action	2026-09-26T07:52:31.4452000Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] Picked up JAVA_TOOL_OPTIONS: -Dlog4j2.configurationFile=/opt/maintenance/log4j2-wire.properties
+execute	Execute Action	2026-09-26T07:52:31.4454615Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] WARNING: Using incubator modules: jdk.incubator.vector
+execute	Execute Action	2026-09-26T07:52:31.4456405Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:01 INFO SparkContext: Running Spark version 4.0.4
+execute	Execute Action	2026-09-26T07:52:31.4458285Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:01 INFO SparkContext: OS info Linux, 7.0.0-34-generic, amd64
+execute	Execute Action	2026-09-26T07:52:31.4459982Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:01 INFO SparkContext: Java version 17.0.19
+execute	Execute Action	2026-09-26T07:52:31.4462145Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:01 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+execute	Execute Action	2026-09-26T07:52:31.4464826Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO ResourceUtils: ==============================================================
+execute	Execute Action	2026-09-26T07:52:31.4466316Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO ResourceUtils: No custom resources configured for spark.driver.
+execute	Execute Action	2026-09-26T07:52:31.4467807Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO ResourceUtils: ==============================================================
+execute	Execute Action	2026-09-26T07:52:31.4469436Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SparkContext: Submitted application: iceberg-maintenance
+execute	Execute Action	2026-09-26T07:52:31.4472245Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO ResourceProfile: Default ResourceProfile created, executor resources: Map(cores -> name: cores, amount: 1, script: , vendor: , memory -> name: memory, amount: 1024, script: , vendor: , offHeap -> name: offHeap, amount: 0, script: , vendor: ), task resources: Map(cpus -> name: cpus, amount: 1.0)
+execute	Execute Action	2026-09-26T07:52:31.4474592Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO ResourceProfile: Limiting resource is cpu
+execute	Execute Action	2026-09-26T07:52:31.4476523Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO ResourceProfileManager: Added ResourceProfile id: 0
+execute	Execute Action	2026-09-26T07:52:31.4478290Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: Changing view acls to: spark
+execute	Execute Action	2026-09-26T07:52:31.4479968Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: Changing modify acls to: spark
+execute	Execute Action	2026-09-26T07:52:31.4481707Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: Changing view acls groups to: spark
+execute	Execute Action	2026-09-26T07:52:31.4483393Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: Changing modify acls groups to: spark
+execute	Execute Action	2026-09-26T07:52:31.4485330Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: spark groups with view permissions: EMPTY; users with modify permissions: spark; groups with modify permissions: EMPTY; RPC SSL disabled
+execute	Execute Action	2026-09-26T07:52:31.4487056Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO Utils: Successfully started service 'sparkDriver' on port 40001.
+execute	Execute Action	2026-09-26T07:52:31.4488045Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SparkEnv: Registering MapOutputTracker
+execute	Execute Action	2026-09-26T07:52:31.4488986Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SparkEnv: Registering BlockManagerMaster
+execute	Execute Action	2026-09-26T07:52:31.4490454Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO BlockManagerMasterEndpoint: Using org.apache.spark.storage.DefaultTopologyMapper for getting topology information
+execute	Execute Action	2026-09-26T07:52:31.4491746Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO BlockManagerMasterEndpoint: BlockManagerMasterEndpoint up
+execute	Execute Action	2026-09-26T07:52:31.4492766Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SparkEnv: Registering BlockManagerMasterHeartbeat
+execute	Execute Action	2026-09-26T07:52:31.4493910Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO DiskBlockManager: Created local directory at /tmp/blockmgr-9c2ac1c5-8555-4474-b0d6-07cb092273c7
+execute	Execute Action	2026-09-26T07:52:31.4495349Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SparkEnv: Registering OutputCommitCoordinator
+execute	Execute Action	2026-09-26T07:52:31.4496331Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO JettyUtils: Start Jetty 0.0.0.0:4040 for SparkUI
+execute	Execute Action	2026-09-26T07:52:31.4497499Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO Server: jetty-11.0.24; built: 2024-08-26T18:11:22.448Z; git: 5dfc59a691b748796f922208956bd1f2794bcd16; jvm 17.0.19+10
+execute	Execute Action	2026-09-26T07:52:31.4498738Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO Server: Started Server@7f49218f{STARTING}[11.0.24,sto=30000] @3380ms
+execute	Execute Action	2026-09-26T07:52:31.4499911Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO AbstractConnector: Started ServerConnector@7ae2fcda{HTTP/1.1, (http/1.1)}{0.0.0.0:4040}
+execute	Execute Action	2026-09-26T07:52:31.4501053Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO Utils: Successfully started service 'SparkUI' on port 4040.
+execute	Execute Action	2026-09-26T07:52:31.4502357Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@33a86489{/,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4503469Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: Changing view acls to: spark
+execute	Execute Action	2026-09-26T07:52:31.4504679Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: Changing modify acls to: spark
+execute	Execute Action	2026-09-26T07:52:31.4505671Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: Changing view acls groups to: spark
+execute	Execute Action	2026-09-26T07:52:31.4506663Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: Changing modify acls groups to: spark
+execute	Execute Action	2026-09-26T07:52:31.4508334Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:02 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: spark groups with view permissions: EMPTY; users with modify permissions: spark; groups with modify permissions: EMPTY; RPC SSL disabled
+execute	Execute Action	2026-09-26T07:52:31.4510253Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO Executor: Starting executor ID driver on host manual-maintenance-20260926-073725-ldxq4
+execute	Execute Action	2026-09-26T07:52:31.4511343Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO Executor: OS info Linux, 7.0.0-34-generic, amd64
+execute	Execute Action	2026-09-26T07:52:31.4512242Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO Executor: Java version 17.0.19
+execute	Execute Action	2026-09-26T07:52:31.4513305Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO Executor: Starting executor with user classpath (userClassPathFirst = false): ''
+execute	Execute Action	2026-09-26T07:52:31.4514872Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO Executor: Created or updated repl class loader org.apache.spark.util.MutableURLClassLoader@1c5bf9cc for default.
+execute	Execute Action	2026-09-26T07:52:31.4516332Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 43017.
+execute	Execute Action	2026-09-26T07:52:31.4517837Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO NettyBlockTransferService: Server created on manual-maintenance-20260926-073725-ldxq4:43017
+execute	Execute Action	2026-09-26T07:52:31.4519188Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+execute	Execute Action	2026-09-26T07:52:31.4520659Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, manual-maintenance-20260926-073725-ldxq4, 43017, None)
+execute	Execute Action	2026-09-26T07:52:31.4522460Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO BlockManagerMasterEndpoint: Registering block manager manual-maintenance-20260926-073725-ldxq4:43017 with 434.4 MiB RAM, BlockManagerId(driver, manual-maintenance-20260926-073725-ldxq4, 43017, None)
+execute	Execute Action	2026-09-26T07:52:31.4524472Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, manual-maintenance-20260926-073725-ldxq4, 43017, None)
+execute	Execute Action	2026-09-26T07:52:31.4525964Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, manual-maintenance-20260926-073725-ldxq4, 43017, None)
+execute	Execute Action	2026-09-26T07:52:31.4527318Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Stopped o.s.j.s.ServletContextHandler@33a86489{/,null,STOPPED,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4528567Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@6cc5442e{/jobs,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4529978Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@77cdc863{/jobs/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4531283Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@581449db{/jobs/job,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4532599Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@8d4dd2b{/jobs/job/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4533901Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@2bd43bd2{/stages,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4535327Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@5e8063a4{/stages/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4536661Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@1e6ed78f{/stages/stage,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4538011Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@45ce4811{/stages/stage/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4539352Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@668780f3{/stages/pool,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4540685Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@795f58f7{/stages/pool/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4542093Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@42b95df3{/stages/taskThreadDump,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4543641Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@3fc5fc1d{/stages/taskThreadDump/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4545125Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@31ceda03{/storage,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4546437Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@69713b91{/storage/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4547756Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@157366ca{/storage/rdd,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4549094Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@2c0e9f7b{/storage/rdd/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4550447Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@256a847c{/environment,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4551783Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@2d92b90b{/environment/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4553108Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@78b874a7{/executors,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4554543Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@4dc4486b{/executors/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4556035Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@7d2d7cc6{/executors/threadDump,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4557453Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@50c8f99c{/executors/threadDump/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4558870Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@592e1c58{/executors/heapHistogram,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4560294Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@72691f25{/executors/heapHistogram/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4561658Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@83d8509{/static,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4562919Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@a44022{/,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4564281Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@7784d7e8{/api,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4565562Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@467a6b21{/metrics,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4566875Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@30a81612{/jobs/job/kill,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4568221Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@500b375a{/stages/stage/kill,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4569578Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:03 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@526d1b70{/metrics/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4571033Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:05 INFO SharedState: Setting hive.metastore.warehouse.dir ('null') to the value of spark.sql.warehouse.dir.
+execute	Execute Action	2026-09-26T07:52:31.4572282Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:05 INFO SharedState: Warehouse path is 'file:/opt/spark/work-dir/spark-warehouse'.
+execute	Execute Action	2026-09-26T07:52:31.4573486Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:05 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@46be787{/SQL,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4574877Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:05 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@f3a526a{/SQL/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4576192Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:05 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@3cafd4f5{/SQL/execution,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4577552Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:05 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@26d50186{/SQL/execution/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4578894Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:05 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@2977c5fe{/static/sql,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:31.4580118Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake=org.apache.iceberg.spark.SparkCatalog
+execute	Execute Action	2026-09-26T07:52:31.4581205Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.client.access-key-id=<len 5>
+execute	Execute Action	2026-09-26T07:52:31.4582363Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.client.region=us-east-1
+execute	Execute Action	2026-09-26T07:52:31.4583412Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.client.secret-access-key=<len 16>
+execute	Execute Action	2026-09-26T07:52:31.4584643Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.io-impl=org.apache.iceberg.aws.s3.S3FileIO
+execute	Execute Action	2026-09-26T07:52:31.4585737Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.access-key-id=<len 5>
+execute	Execute Action	2026-09-26T07:52:31.4586787Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.secret-access-key=<len 16>
+execute	Execute Action	2026-09-26T07:52:31.4587824Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.signing-name=s3
+execute	Execute Action	2026-09-26T07:52:31.4588861Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.signing-region=us-east-1
+execute	Execute Action	2026-09-26T07:52:31.4589896Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.sigv4-enabled=true
+execute	Execute Action	2026-09-26T07:52:31.4590901Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.access-key-id=<len 5>
+execute	Execute Action	2026-09-26T07:52:31.4592066Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.endpoint=http://rustfs-svc.rustfs.svc.cluster.local:9000
+execute	Execute Action	2026-09-26T07:52:31.4593239Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.path-style-access=true
+execute	Execute Action	2026-09-26T07:52:31.4594359Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.region=us-east-1
+execute	Execute Action	2026-09-26T07:52:31.4595378Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.secret-access-key=<len 16>
+execute	Execute Action	2026-09-26T07:52:31.4596359Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.type=rest
+execute	Execute Action	2026-09-26T07:52:31.4597574Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.uri=http://rustfs-svc.rustfs.svc.cluster.local:9000/iceberg
+execute	Execute Action	2026-09-26T07:52:31.4598699Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG spark conf spark.sql.catalog.datalake.warehouse=datalake
+execute	Execute Action	2026-09-26T07:52:31.4599560Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG env RUSTFS_ACCESS_KEY len=5
+execute	Execute Action	2026-09-26T07:52:31.4600303Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG env RUSTFS_SECRET_KEY len=16
+execute	Execute Action	2026-09-26T07:52:31.4601057Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG env AWS_ACCESS_KEY_ID len=5
+execute	Execute Action	2026-09-26T07:52:31.4601812Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG env AWS_SECRET_ACCESS_KEY len=16
+execute	Execute Action	2026-09-26T07:52:31.4602547Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] DEBUG env AWS_REGION len=9
+execute	Execute Action	2026-09-26T07:52:31.4603887Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:06 WARN AuthManagers: The property rest.sigv4-enabled is deprecated and will be removed in a future release. Please use the property rest.auth.type=sigv4 instead.
+execute	Execute Action	2026-09-26T07:52:31.4605689Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:06 INFO AuthManagers: Loading AuthManager implementation: org.apache.iceberg.rest.auth.OAuth2Manager
+execute	Execute Action	2026-09-26T07:52:31.4607022Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:06 INFO AuthManagers: Loading AuthManager implementation: org.apache.iceberg.aws.RESTSigV4AuthManager
+execute	Execute Action	2026-09-26T07:52:31.4608143Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:06 DEBUG Aws4Signer: AWS4 Canonical Request: GET
+execute	Execute Action	2026-09-26T07:52:31.4609187Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] /iceberg/v1/config
+execute	Execute Action	2026-09-26T07:52:31.4609833Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] warehouse=datalake
+execute	Execute Action	2026-09-26T07:52:31.4610490Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] accept:application/json
+execute	Execute Action	2026-09-26T07:52:31.4611182Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] content-type:application/json
+execute	Execute Action	2026-09-26T07:52:31.4611963Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] host:rustfs-svc.rustfs.svc.cluster.local:9000
+execute	Execute Action	2026-09-26T07:52:31.4612963Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:31.4613872Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-amz-date:20260926T073806Z
+execute	Execute Action	2026-09-26T07:52:31.4614909Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-client-git-commit-short:6976e02
+execute	Execute Action	2026-09-26T07:52:31.4616483Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-client-version:Apache Iceberg 1.11.0 (commit 6976e020b894f6a6777704df2b8c4458cb291ae9)
+execute	Execute Action	2026-09-26T07:52:31.4617325Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 
+execute	Execute Action	2026-09-26T07:52:31.4618201Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] accept;content-type;host;x-amz-content-sha256;x-amz-date;x-client-git-commit-short;x-client-version
+execute	Execute Action	2026-09-26T07:52:31.4619315Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:31.4620307Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:06 DEBUG Aws4Signer: AWS4 String to sign: AWS4-HMAC-SHA256
+execute	Execute Action	2026-09-26T07:52:31.4621118Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 20260926T073806Z
+execute	Execute Action	2026-09-26T07:52:31.4621844Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 20260926/us-east-1/s3/aws4_request
+execute	Execute Action	2026-09-26T07:52:31.4622910Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 0f972e30c9b7ecc75ae181ac5c96b2b4c4cde3a3cb838d0dbb56cc4f0a1898c6
+execute	Execute Action	2026-09-26T07:52:31.4624038Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:06 INFO CatalogUtil: Loading custom FileIO implementation: org.apache.iceberg.aws.s3.S3FileIO
+execute	Execute Action	2026-09-26T07:52:31.4625416Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 DEBUG Aws4Signer: AWS4 Canonical Request: GET
+execute	Execute Action	2026-09-26T07:52:31.4626245Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] /iceberg/v1/datalake/namespaces
+execute	Execute Action	2026-09-26T07:52:31.4626905Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] pageToken=
+execute	Execute Action	2026-09-26T07:52:31.4627536Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] accept:application/json
+execute	Execute Action	2026-09-26T07:52:31.4628227Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] content-type:application/json
+execute	Execute Action	2026-09-26T07:52:31.4629010Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] host:rustfs-svc.rustfs.svc.cluster.local:9000
+execute	Execute Action	2026-09-26T07:52:31.4630000Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:31.4630916Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-amz-date:20260926T073807Z
+execute	Execute Action	2026-09-26T07:52:31.4631633Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-client-git-commit-short:6976e02
+execute	Execute Action	2026-09-26T07:52:31.4632575Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-client-version:Apache Iceberg 1.11.0 (commit 6976e020b894f6a6777704df2b8c4458cb291ae9)
+execute	Execute Action	2026-09-26T07:52:31.4633405Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 
+execute	Execute Action	2026-09-26T07:52:31.4634392Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] accept;content-type;host;x-amz-content-sha256;x-amz-date;x-client-git-commit-short;x-client-version
+execute	Execute Action	2026-09-26T07:52:31.4635500Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:31.4636589Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 DEBUG Aws4Signer: AWS4 String to sign: AWS4-HMAC-SHA256
+execute	Execute Action	2026-09-26T07:52:31.4637386Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 20260926T073807Z
+execute	Execute Action	2026-09-26T07:52:31.4638057Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 20260926/us-east-1/s3/aws4_request
+execute	Execute Action	2026-09-26T07:52:31.4638906Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 311ad32eb6c6564940dd599c0938d9ff6da90020c7e37bafed9353817f7ef934
+execute	Execute Action	2026-09-26T07:52:31.4639860Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO CodeGenerator: Code generated in 196.330145 ms
+execute	Execute Action	2026-09-26T07:52:31.4640786Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO CodeGenerator: Code generated in 5.663345 ms
+execute	Execute Action	2026-09-26T07:52:31.4641700Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 DEBUG Aws4Signer: AWS4 Canonical Request: GET
+execute	Execute Action	2026-09-26T07:52:31.4642587Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] /iceberg/v1/datalake/namespaces/d%251Fb/tables
+execute	Execute Action	2026-09-26T07:52:31.4643293Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] pageToken=
+execute	Execute Action	2026-09-26T07:52:31.4643920Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] accept:application/json
+execute	Execute Action	2026-09-26T07:52:31.4644732Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] content-type:application/json
+execute	Execute Action	2026-09-26T07:52:31.4645510Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] host:rustfs-svc.rustfs.svc.cluster.local:9000
+execute	Execute Action	2026-09-26T07:52:31.4646502Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:31.4647404Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-amz-date:20260926T073807Z
+execute	Execute Action	2026-09-26T07:52:31.4648121Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-client-git-commit-short:6976e02
+execute	Execute Action	2026-09-26T07:52:31.4649061Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] x-client-version:Apache Iceberg 1.11.0 (commit 6976e020b894f6a6777704df2b8c4458cb291ae9)
+execute	Execute Action	2026-09-26T07:52:31.4650044Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 
+execute	Execute Action	2026-09-26T07:52:31.4650906Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] accept;content-type;host;x-amz-content-sha256;x-amz-date;x-client-git-commit-short;x-client-version
+execute	Execute Action	2026-09-26T07:52:31.4652010Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:31.4652977Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 DEBUG Aws4Signer: AWS4 String to sign: AWS4-HMAC-SHA256
+execute	Execute Action	2026-09-26T07:52:31.4653771Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 20260926T073807Z
+execute	Execute Action	2026-09-26T07:52:31.4654558Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 20260926/us-east-1/s3/aws4_request
+execute	Execute Action	2026-09-26T07:52:31.4655410Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 4f66502d745baa71a1ac62f346621857fc64732211fcd7d7e5333e0fcd5e62a7
+execute	Execute Action	2026-09-26T07:52:31.4656546Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] ❌ maintenance: table discovery failed
+execute	Execute Action	2026-09-26T07:52:31.4657309Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] Traceback (most recent call last):
+execute	Execute Action	2026-09-26T07:52:31.4658230Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]   File "/opt/maintenance/..2026_09_26_07_37_58.3983605260/maintenance.py", line 237, in main
+execute	Execute Action	2026-09-26T07:52:31.4659162Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]     tables = discover_tables(spark)
+execute	Execute Action	2026-09-26T07:52:31.4660116Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]   File "/opt/maintenance/..2026_09_26_07_37_58.3983605260/maintenance.py", line 56, in discover_tables
+execute	Execute Action	2026-09-26T07:52:31.4661201Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]     for t_row in spark.sql(f"SHOW TABLES IN {CATALOG}.{namespace}").collect():
+execute	Execute Action	2026-09-26T07:52:31.4662397Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]   File "/opt/spark/python/lib/pyspark.zip/pyspark/sql/session.py", line 1810, in sql
+execute	Execute Action	2026-09-26T07:52:31.4663443Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]     return DataFrame(self._jsparkSession.sql(sqlQuery, litArgs), self)
+execute	Execute Action	2026-09-26T07:52:31.4664645Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]   File "/opt/spark/python/lib/py4j-0.10.9.9-src.zip/py4j/java_gateway.py", line 1362, in __call__
+execute	Execute Action	2026-09-26T07:52:31.4665605Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]     return_value = get_return_value(
+execute	Execute Action	2026-09-26T07:52:31.4666591Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]   File "/opt/spark/python/lib/pyspark.zip/pyspark/errors/exceptions/captured.py", line 282, in deco
+execute	Execute Action	2026-09-26T07:52:31.4667521Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]     return f(*a, **kw)
+execute	Execute Action	2026-09-26T07:52:31.4668440Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]   File "/opt/spark/python/lib/py4j-0.10.9.9-src.zip/py4j/protocol.py", line 327, in get_return_value
+execute	Execute Action	2026-09-26T07:52:31.4669373Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance]     raise Py4JJavaError(
+execute	Execute Action	2026-09-26T07:52:31.4670221Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] py4j.protocol.Py4JJavaError: An error occurred while calling o68.sql.
+execute	Execute Action	2026-09-26T07:52:31.4671979Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] : org.apache.iceberg.exceptions.ForbiddenException: Forbidden: The request signature we calculated does not match the signature you provided. Check your AWS secret access key and signing method. For more information, see REST Authentication and SOAP Authentication for details.
+execute	Execute Action	2026-09-26T07:52:31.4673853Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.rest.ErrorHandlers$DefaultErrorHandler.accept(ErrorHandlers.java:345)
+execute	Execute Action	2026-09-26T07:52:31.4675194Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:285)
+execute	Execute Action	2026-09-26T07:52:31.4676402Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:266)
+execute	Execute Action	2026-09-26T07:52:31.4677653Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.rest.HTTPClient.throwFailure(HTTPClient.java:242)
+execute	Execute Action	2026-09-26T07:52:31.4678675Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:347)
+execute	Execute Action	2026-09-26T07:52:31.4679682Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:299)
+execute	Execute Action	2026-09-26T07:52:31.4680694Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.rest.BaseHTTPClient.get(BaseHTTPClient.java:77)
+execute	Execute Action	2026-09-26T07:52:31.4681780Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.rest.RESTSessionCatalog.listTables(RESTSessionCatalog.java:325)
+execute	Execute Action	2026-09-26T07:52:31.4682996Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.catalog.BaseSessionCatalog$AsCatalog.listTables(BaseSessionCatalog.java:79)
+execute	Execute Action	2026-09-26T07:52:31.4684338Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.rest.RESTCatalog.listTables(RESTCatalog.java:114)
+execute	Execute Action	2026-09-26T07:52:31.4685412Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.CachingCatalog.listTables(CachingCatalog.java:136)
+execute	Execute Action	2026-09-26T07:52:31.4686464Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.iceberg.spark.SparkCatalog.listTables(SparkCatalog.java:428)
+execute	Execute Action	2026-09-26T07:52:31.4687609Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.datasources.v2.ShowTablesExec.run(ShowTablesExec.scala:40)
+execute	Execute Action	2026-09-26T07:52:31.4688868Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result$lzycompute(V2CommandExec.scala:43)
+execute	Execute Action	2026-09-26T07:52:31.4690271Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result(V2CommandExec.scala:43)
+execute	Execute Action	2026-09-26T07:52:31.4691536Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.executeCollect(V2CommandExec.scala:49)
+execute	Execute Action	2026-09-26T07:52:31.4692847Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$2(QueryExecution.scala:155)
+execute	Execute Action	2026-09-26T07:52:31.4694273Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$8(SQLExecution.scala:163)
+execute	Execute Action	2026-09-26T07:52:31.4695520Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.withSessionTagsApplied(SQLExecution.scala:272)
+execute	Execute Action	2026-09-26T07:52:31.4696774Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$7(SQLExecution.scala:125)
+execute	Execute Action	2026-09-26T07:52:31.4697999Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.JobArtifactSet$.withActiveJobArtifactState(JobArtifactSet.scala:94)
+execute	Execute Action	2026-09-26T07:52:31.4699207Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.artifact.ArtifactManager.$anonfun$withResources$1(ArtifactManager.scala:112)
+execute	Execute Action	2026-09-26T07:52:31.4700472Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.artifact.ArtifactManager.withClassLoaderIfNeeded(ArtifactManager.scala:106)
+execute	Execute Action	2026-09-26T07:52:31.4701716Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.artifact.ArtifactManager.withResources(ArtifactManager.scala:111)
+execute	Execute Action	2026-09-26T07:52:31.4702941Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$6(SQLExecution.scala:125)
+execute	Execute Action	2026-09-26T07:52:31.4704301Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:295)
+execute	Execute Action	2026-09-26T07:52:31.4705657Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$1(SQLExecution.scala:124)
+execute	Execute Action	2026-09-26T07:52:31.4706804Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+execute	Execute Action	2026-09-26T07:52:31.4707918Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId0(SQLExecution.scala:78)
+execute	Execute Action	2026-09-26T07:52:31.4709141Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:237)
+execute	Execute Action	2026-09-26T07:52:31.4710388Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$1(QueryExecution.scala:155)
+execute	Execute Action	2026-09-26T07:52:31.4711663Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.QueryExecution$.withInternalError(QueryExecution.scala:654)
+execute	Execute Action	2026-09-26T07:52:31.4713029Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.org$apache$spark$sql$execution$QueryExecution$$eagerlyExecute$1(QueryExecution.scala:154)
+execute	Execute Action	2026-09-26T07:52:31.4714613Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:169)
+execute	Execute Action	2026-09-26T07:52:31.4716027Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:164)
+execute	Execute Action	2026-09-26T07:52:31.4717379Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.catalyst.trees.TreeNode.$anonfun$transformDownWithPruning$1(TreeNode.scala:470)
+execute	Execute Action	2026-09-26T07:52:31.4718716Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:86)
+execute	Execute Action	2026-09-26T07:52:31.4719889Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.catalyst.trees.TreeNode.transformDownWithPruning(TreeNode.scala:470)
+execute	Execute Action	2026-09-26T07:52:31.4721402Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.org$apache$spark$sql$catalyst$plans$logical$AnalysisHelper$$super$transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:31.4723018Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning(AnalysisHelper.scala:360)
+execute	Execute Action	2026-09-26T07:52:31.4724555Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning$(AnalysisHelper.scala:356)
+execute	Execute Action	2026-09-26T07:52:31.4725962Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:31.4727313Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:31.4728553Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.catalyst.trees.TreeNode.transformDown(TreeNode.scala:446)
+execute	Execute Action	2026-09-26T07:52:31.4729759Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.eagerlyExecuteCommands(QueryExecution.scala:164)
+execute	Execute Action	2026-09-26T07:52:31.7156176Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyCommandExecuted$1(QueryExecution.scala:126)
+execute	Execute Action	2026-09-26T07:52:31.7159280Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at scala.util.Try$.apply(Try.scala:217)
+execute	Execute Action	2026-09-26T07:52:31.7161882Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.util.Utils$.doTryWithCallerStacktrace(Utils.scala:1378)
+execute	Execute Action	2026-09-26T07:52:31.7163621Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.util.Utils$.getTryWithCallerStacktrace(Utils.scala:1439)
+execute	Execute Action	2026-09-26T07:52:31.7165058Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.util.LazyTry.get(LazyTry.scala:58)
+execute	Execute Action	2026-09-26T07:52:31.7166278Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.commandExecuted(QueryExecution.scala:131)
+execute	Execute Action	2026-09-26T07:52:31.7167546Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.classic.Dataset.<init>(Dataset.scala:277)
+execute	Execute Action	2026-09-26T07:52:31.7168723Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.classic.Dataset$.$anonfun$ofRows$5(Dataset.scala:140)
+execute	Execute Action	2026-09-26T07:52:31.7169931Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+execute	Execute Action	2026-09-26T07:52:31.7171103Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.classic.Dataset$.ofRows(Dataset.scala:136)
+execute	Execute Action	2026-09-26T07:52:31.7172206Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.classic.SparkSession.$anonfun$sql$1(SparkSession.scala:462)
+execute	Execute Action	2026-09-26T07:52:31.7173293Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+execute	Execute Action	2026-09-26T07:52:31.7174545Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.classic.SparkSession.sql(SparkSession.scala:449)
+execute	Execute Action	2026-09-26T07:52:31.7175635Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at org.apache.spark.sql.classic.SparkSession.sql(SparkSession.scala:467)
+execute	Execute Action	2026-09-26T07:52:31.7176930Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+execute	Execute Action	2026-09-26T07:52:31.7178146Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+execute	Execute Action	2026-09-26T07:52:31.7179457Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+execute	Execute Action	2026-09-26T07:52:31.7180610Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+execute	Execute Action	2026-09-26T07:52:31.7181587Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)
+execute	Execute Action	2026-09-26T07:52:31.7182582Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)
+execute	Execute Action	2026-09-26T07:52:31.7183495Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at py4j.Gateway.invoke(Gateway.java:282)
+execute	Execute Action	2026-09-26T07:52:31.7184933Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)
+execute	Execute Action	2026-09-26T07:52:31.7186732Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at py4j.commands.CallCommand.execute(CallCommand.java:79)
+execute	Execute Action	2026-09-26T07:52:31.7188425Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:184)
+execute	Execute Action	2026-09-26T07:52:31.7190336Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at py4j.ClientServerConnection.run(ClientServerConnection.java:108)
+execute	Execute Action	2026-09-26T07:52:31.7191915Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	at java.base/java.lang.Thread.run(Thread.java:840)
+execute	Execute Action	2026-09-26T07:52:31.7193936Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 	Suppressed: org.apache.spark.util.Utils$OriginalTryStackTraceException: Full stacktrace of original doTryWithCallerStacktrace caller
+execute	Execute Action	2026-09-26T07:52:31.7197186Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.rest.ErrorHandlers$DefaultErrorHandler.accept(ErrorHandlers.java:345)
+execute	Execute Action	2026-09-26T07:52:31.7198434Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:285)
+execute	Execute Action	2026-09-26T07:52:31.7199665Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:266)
+execute	Execute Action	2026-09-26T07:52:31.7200789Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.rest.HTTPClient.throwFailure(HTTPClient.java:242)
+execute	Execute Action	2026-09-26T07:52:31.7202038Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:347)
+execute	Execute Action	2026-09-26T07:52:31.7203207Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:299)
+execute	Execute Action	2026-09-26T07:52:31.7204570Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.rest.BaseHTTPClient.get(BaseHTTPClient.java:77)
+execute	Execute Action	2026-09-26T07:52:31.7205847Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.rest.RESTSessionCatalog.listTables(RESTSessionCatalog.java:325)
+execute	Execute Action	2026-09-26T07:52:31.7207229Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.catalog.BaseSessionCatalog$AsCatalog.listTables(BaseSessionCatalog.java:79)
+execute	Execute Action	2026-09-26T07:52:31.7208528Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.rest.RESTCatalog.listTables(RESTCatalog.java:114)
+execute	Execute Action	2026-09-26T07:52:31.7209722Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.CachingCatalog.listTables(CachingCatalog.java:136)
+execute	Execute Action	2026-09-26T07:52:31.7211152Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.iceberg.spark.SparkCatalog.listTables(SparkCatalog.java:428)
+execute	Execute Action	2026-09-26T07:52:31.7212889Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.datasources.v2.ShowTablesExec.run(ShowTablesExec.scala:40)
+execute	Execute Action	2026-09-26T07:52:31.7214429Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result$lzycompute(V2CommandExec.scala:43)
+execute	Execute Action	2026-09-26T07:52:31.7216036Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result(V2CommandExec.scala:43)
+execute	Execute Action	2026-09-26T07:52:31.7217581Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.executeCollect(V2CommandExec.scala:49)
+execute	Execute Action	2026-09-26T07:52:31.7219110Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$2(QueryExecution.scala:155)
+execute	Execute Action	2026-09-26T07:52:31.7220574Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$8(SQLExecution.scala:163)
+execute	Execute Action	2026-09-26T07:52:31.7221990Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.withSessionTagsApplied(SQLExecution.scala:272)
+execute	Execute Action	2026-09-26T07:52:31.7223468Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$7(SQLExecution.scala:125)
+execute	Execute Action	2026-09-26T07:52:31.7225160Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.JobArtifactSet$.withActiveJobArtifactState(JobArtifactSet.scala:94)
+execute	Execute Action	2026-09-26T07:52:31.7226525Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.artifact.ArtifactManager.$anonfun$withResources$1(ArtifactManager.scala:112)
+execute	Execute Action	2026-09-26T07:52:31.7227950Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.artifact.ArtifactManager.withClassLoaderIfNeeded(ArtifactManager.scala:106)
+execute	Execute Action	2026-09-26T07:52:31.7229630Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.artifact.ArtifactManager.withResources(ArtifactManager.scala:111)
+execute	Execute Action	2026-09-26T07:52:31.7231084Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$6(SQLExecution.scala:125)
+execute	Execute Action	2026-09-26T07:52:31.7232472Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:295)
+execute	Execute Action	2026-09-26T07:52:31.7233949Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$1(SQLExecution.scala:124)
+execute	Execute Action	2026-09-26T07:52:31.7235478Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+execute	Execute Action	2026-09-26T07:52:31.7236877Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId0(SQLExecution.scala:78)
+execute	Execute Action	2026-09-26T07:52:31.7238317Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:237)
+execute	Execute Action	2026-09-26T07:52:31.7239901Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$1(QueryExecution.scala:155)
+execute	Execute Action	2026-09-26T07:52:31.7241348Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.QueryExecution$.withInternalError(QueryExecution.scala:654)
+execute	Execute Action	2026-09-26T07:52:31.7243144Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.org$apache$spark$sql$execution$QueryExecution$$eagerlyExecute$1(QueryExecution.scala:154)
+execute	Execute Action	2026-09-26T07:52:31.7256112Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:169)
+execute	Execute Action	2026-09-26T07:52:31.7258892Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:164)
+execute	Execute Action	2026-09-26T07:52:31.7261350Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.catalyst.trees.TreeNode.$anonfun$transformDownWithPruning$1(TreeNode.scala:470)
+execute	Execute Action	2026-09-26T07:52:31.7263490Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:86)
+execute	Execute Action	2026-09-26T07:52:31.7265835Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.catalyst.trees.TreeNode.transformDownWithPruning(TreeNode.scala:470)
+execute	Execute Action	2026-09-26T07:52:31.7268567Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.org$apache$spark$sql$catalyst$plans$logical$AnalysisHelper$$super$transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:31.7271474Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning(AnalysisHelper.scala:360)
+execute	Execute Action	2026-09-26T07:52:31.7274037Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning$(AnalysisHelper.scala:356)
+execute	Execute Action	2026-09-26T07:52:31.7276704Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:31.7279117Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:31.7281358Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.catalyst.trees.TreeNode.transformDown(TreeNode.scala:446)
+execute	Execute Action	2026-09-26T07:52:31.7283771Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.eagerlyExecuteCommands(QueryExecution.scala:164)
+execute	Execute Action	2026-09-26T07:52:31.7286301Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyCommandExecuted$1(QueryExecution.scala:126)
+execute	Execute Action	2026-09-26T07:52:31.7288226Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at scala.util.Try$.apply(Try.scala:217)
+execute	Execute Action	2026-09-26T07:52:31.7289961Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.util.Utils$.doTryWithCallerStacktrace(Utils.scala:1378)
+execute	Execute Action	2026-09-26T07:52:31.7292071Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.util.LazyTry.tryT$lzycompute(LazyTry.scala:46)
+execute	Execute Action	2026-09-26T07:52:31.7293550Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		at org.apache.spark.util.LazyTry.tryT(LazyTry.scala:46)
+execute	Execute Action	2026-09-26T07:52:31.7294886Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 		... 22 more
+execute	Execute Action	2026-09-26T07:52:31.7295963Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 
+execute	Execute Action	2026-09-26T07:52:31.7297097Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO SparkContext: SparkContext is stopping with exitCode 0 from stop at NativeMethodAccessorImpl.java:0.
+execute	Execute Action	2026-09-26T07:52:31.7298427Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO Server: Stopped Server@7f49218f{STOPPING}[11.0.24,sto=30000]
+execute	Execute Action	2026-09-26T07:52:31.7299459Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO Server: Shutdown Server@7f49218f{STOPPING}[11.0.24,sto=30000]
+execute	Execute Action	2026-09-26T07:52:31.7300551Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO AbstractConnector: Stopped Spark@7ae2fcda{HTTP/1.1, (http/1.1)}{0.0.0.0:4040}
+execute	Execute Action	2026-09-26T07:52:31.7301959Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO SparkUI: Stopped Spark web UI at http://manual-maintenance-20260926-073725-ldxq4:4040
+execute	Execute Action	2026-09-26T07:52:31.7303202Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+execute	Execute Action	2026-09-26T07:52:31.7318009Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+execute	Execute Action	2026-09-26T07:52:31.7319024Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO MemoryStore: MemoryStore cleared
+execute	Execute Action	2026-09-26T07:52:31.7319933Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO BlockManager: BlockManager stopped
+execute	Execute Action	2026-09-26T07:52:31.7320858Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO BlockManagerMaster: BlockManagerMaster stopped
+execute	Execute Action	2026-09-26T07:52:31.7322004Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+execute	Execute Action	2026-09-26T07:52:31.7323155Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:07 INFO SparkContext: Successfully stopped SparkContext
+execute	Execute Action	2026-09-26T07:52:31.7324113Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:08 INFO ShutdownHookManager: Shutdown hook called
+execute	Execute Action	2026-09-26T07:52:31.7325646Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:08 INFO ShutdownHookManager: Deleting directory /tmp/artifacts-ff372793-0afe-4cc8-b495-c9da31bc4003
+execute	Execute Action	2026-09-26T07:52:31.7326914Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:08 INFO ShutdownHookManager: Deleting directory /tmp/spark-3ac335c7-8fbc-4186-a28b-0eef1455b3d0
+execute	Execute Action	2026-09-26T07:52:31.7328413Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:08 INFO ShutdownHookManager: Deleting directory /tmp/spark-3c0e767d-d1b5-4fae-8591-2bdee9944b3f
+execute	Execute Action	2026-09-26T07:52:31.7330778Z [pod/manual-maintenance-20260926-073725-ldxq4/maintenance] 26/09/26 07:38:08 INFO ShutdownHookManager: Deleting directory /tmp/spark-3c0e767d-d1b5-4fae-8591-2bdee9944b3f/pyspark-7f87fb9c-fdb8-4818-aa18-74b48395a8af
+execute	Execute Action	2026-09-26T07:52:31.7333234Z → kubectl logs pod/manual-maintenance-20260926-073725-n9vsz --tail=2000
+execute	Execute Action	2026-09-26T07:52:32.9828181Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] Picked up JAVA_TOOL_OPTIONS: -Dlog4j2.configurationFile=/opt/maintenance/log4j2-wire.properties
+execute	Execute Action	2026-09-26T07:52:32.9831196Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] Picked up JAVA_TOOL_OPTIONS: -Dlog4j2.configurationFile=/opt/maintenance/log4j2-wire.properties
+execute	Execute Action	2026-09-26T07:52:32.9834013Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] WARNING: Using incubator modules: jdk.incubator.vector
+execute	Execute Action	2026-09-26T07:52:32.9836150Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO SparkContext: Running Spark version 4.0.4
+execute	Execute Action	2026-09-26T07:52:32.9837427Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO SparkContext: OS info Linux, 7.0.0-34-generic, amd64
+execute	Execute Action	2026-09-26T07:52:32.9839141Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO SparkContext: Java version 17.0.19
+execute	Execute Action	2026-09-26T07:52:32.9841666Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+execute	Execute Action	2026-09-26T07:52:32.9843968Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO ResourceUtils: ==============================================================
+execute	Execute Action	2026-09-26T07:52:32.9846308Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO ResourceUtils: No custom resources configured for spark.driver.
+execute	Execute Action	2026-09-26T07:52:32.9848751Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO ResourceUtils: ==============================================================
+execute	Execute Action	2026-09-26T07:52:32.9850764Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO SparkContext: Submitted application: iceberg-maintenance
+execute	Execute Action	2026-09-26T07:52:32.9854552Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO ResourceProfile: Default ResourceProfile created, executor resources: Map(cores -> name: cores, amount: 1, script: , vendor: , memory -> name: memory, amount: 1024, script: , vendor: , offHeap -> name: offHeap, amount: 0, script: , vendor: ), task resources: Map(cpus -> name: cpus, amount: 1.0)
+execute	Execute Action	2026-09-26T07:52:32.9857517Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO ResourceProfile: Limiting resource is cpu
+execute	Execute Action	2026-09-26T07:52:32.9858837Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO ResourceProfileManager: Added ResourceProfile id: 0
+execute	Execute Action	2026-09-26T07:52:32.9859947Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO SecurityManager: Changing view acls to: spark
+execute	Execute Action	2026-09-26T07:52:32.9861087Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO SecurityManager: Changing modify acls to: spark
+execute	Execute Action	2026-09-26T07:52:32.9862071Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO SecurityManager: Changing view acls groups to: spark
+execute	Execute Action	2026-09-26T07:52:32.9863067Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO SecurityManager: Changing modify acls groups to: spark
+execute	Execute Action	2026-09-26T07:52:32.9864923Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:42 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: spark groups with view permissions: EMPTY; users with modify permissions: spark; groups with modify permissions: EMPTY; RPC SSL disabled
+execute	Execute Action	2026-09-26T07:52:32.9866661Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Utils: Successfully started service 'sparkDriver' on port 40309.
+execute	Execute Action	2026-09-26T07:52:32.9867858Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO SparkEnv: Registering MapOutputTracker
+execute	Execute Action	2026-09-26T07:52:32.9868778Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO SparkEnv: Registering BlockManagerMaster
+execute	Execute Action	2026-09-26T07:52:32.9870002Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO BlockManagerMasterEndpoint: Using org.apache.spark.storage.DefaultTopologyMapper for getting topology information
+execute	Execute Action	2026-09-26T07:52:32.9871274Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO BlockManagerMasterEndpoint: BlockManagerMasterEndpoint up
+execute	Execute Action	2026-09-26T07:52:32.9872312Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO SparkEnv: Registering BlockManagerMasterHeartbeat
+execute	Execute Action	2026-09-26T07:52:32.9873456Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO DiskBlockManager: Created local directory at /tmp/blockmgr-72238a40-cc31-43be-b9a9-d8ce7e52bec3
+execute	Execute Action	2026-09-26T07:52:32.9874721Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO SparkEnv: Registering OutputCommitCoordinator
+execute	Execute Action	2026-09-26T07:52:32.9875675Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO JettyUtils: Start Jetty 0.0.0.0:4040 for SparkUI
+execute	Execute Action	2026-09-26T07:52:32.9876829Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Server: jetty-11.0.24; built: 2024-08-26T18:11:22.448Z; git: 5dfc59a691b748796f922208956bd1f2794bcd16; jvm 17.0.19+10
+execute	Execute Action	2026-09-26T07:52:32.9878047Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Server: Started Server@1e33d315{STARTING}[11.0.24,sto=30000] @3253ms
+execute	Execute Action	2026-09-26T07:52:32.9879400Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO AbstractConnector: Started ServerConnector@50ea50b0{HTTP/1.1, (http/1.1)}{0.0.0.0:4040}
+execute	Execute Action	2026-09-26T07:52:32.9880533Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Utils: Successfully started service 'SparkUI' on port 4040.
+execute	Execute Action	2026-09-26T07:52:32.9881650Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@16b0fc9{/,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9882727Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO SecurityManager: Changing view acls to: spark
+execute	Execute Action	2026-09-26T07:52:32.9883668Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO SecurityManager: Changing modify acls to: spark
+execute	Execute Action	2026-09-26T07:52:32.9884748Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO SecurityManager: Changing view acls groups to: spark
+execute	Execute Action	2026-09-26T07:52:32.9885743Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO SecurityManager: Changing modify acls groups to: spark
+execute	Execute Action	2026-09-26T07:52:32.9887417Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO SecurityManager: SecurityManager: authentication disabled; ui acls disabled; users with view permissions: spark groups with view permissions: EMPTY; users with modify permissions: spark; groups with modify permissions: EMPTY; RPC SSL disabled
+execute	Execute Action	2026-09-26T07:52:32.9889178Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Executor: Starting executor ID driver on host manual-maintenance-20260926-073725-n9vsz
+execute	Execute Action	2026-09-26T07:52:32.9890250Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Executor: OS info Linux, 7.0.0-34-generic, amd64
+execute	Execute Action	2026-09-26T07:52:32.9891147Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Executor: Java version 17.0.19
+execute	Execute Action	2026-09-26T07:52:32.9892173Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Executor: Starting executor with user classpath (userClassPathFirst = false): ''
+execute	Execute Action	2026-09-26T07:52:32.9893603Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Executor: Created or updated repl class loader org.apache.spark.util.MutableURLClassLoader@16eff6e0 for default.
+execute	Execute Action	2026-09-26T07:52:32.9895148Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO Utils: Successfully started service 'org.apache.spark.network.netty.NettyBlockTransferService' on port 44989.
+execute	Execute Action	2026-09-26T07:52:32.9896508Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO NettyBlockTransferService: Server created on manual-maintenance-20260926-073725-n9vsz:44989
+execute	Execute Action	2026-09-26T07:52:32.9897849Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO BlockManager: Using org.apache.spark.storage.RandomBlockReplicationPolicy for block replication policy
+execute	Execute Action	2026-09-26T07:52:32.9899300Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO BlockManagerMaster: Registering BlockManager BlockManagerId(driver, manual-maintenance-20260926-073725-n9vsz, 44989, None)
+execute	Execute Action	2026-09-26T07:52:32.9901083Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO BlockManagerMasterEndpoint: Registering block manager manual-maintenance-20260926-073725-n9vsz:44989 with 434.4 MiB RAM, BlockManagerId(driver, manual-maintenance-20260926-073725-n9vsz, 44989, None)
+execute	Execute Action	2026-09-26T07:52:32.9902849Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO BlockManagerMaster: Registered BlockManager BlockManagerId(driver, manual-maintenance-20260926-073725-n9vsz, 44989, None)
+execute	Execute Action	2026-09-26T07:52:32.9904415Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO BlockManager: Initialized BlockManager: BlockManagerId(driver, manual-maintenance-20260926-073725-n9vsz, 44989, None)
+execute	Execute Action	2026-09-26T07:52:32.9905906Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Stopped o.s.j.s.ServletContextHandler@16b0fc9{/,null,STOPPED,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9907148Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@670a414f{/jobs,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9908476Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@3214eee0{/jobs/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9909766Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@4d62dfd7{/jobs/job,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9911070Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@51f4faa6{/jobs/job/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9912370Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@7093c518{/stages,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9913668Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@28579318{/stages/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9915107Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@465dd293{/stages/stage,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9916437Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@ebdfc04{/stages/stage/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9917767Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@4ee61ffa{/stages/pool,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9919097Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@18e3d604{/stages/pool/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9920594Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@3cde8391{/stages/taskThreadDump,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9922000Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@39104e17{/stages/taskThreadDump/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9923348Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@79c405a0{/storage,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9924758Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@52aab05e{/storage/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9926074Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@4cc398c1{/storage/rdd,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9927401Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@2b21e2e4{/storage/rdd/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9928717Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@75bf0580{/environment,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9930039Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@900589f{/environment/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9931349Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@75a6fd35{/executors,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9932795Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@460b25ec{/executors/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9934268Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@3f206903{/executors/threadDump,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9935670Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@4ff3922c{/executors/threadDump/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9937072Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@657a0e0f{/executors/heapHistogram,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9938502Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@21d881b6{/executors/heapHistogram/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9939860Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@3d82e877{/static,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9941100Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@54c69bf{/,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9942340Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@4384caa9{/api,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9943606Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@1e3d6baf{/metrics,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9945022Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@251e4045{/jobs/job/kill,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9946490Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@118f4d28{/stages/stage/kill,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9947815Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:43 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@66f9a37a{/metrics/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9949131Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:45 INFO SharedState: Setting hive.metastore.warehouse.dir ('null') to the value of spark.sql.warehouse.dir.
+execute	Execute Action	2026-09-26T07:52:32.9950355Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:45 INFO SharedState: Warehouse path is 'file:/opt/spark/work-dir/spark-warehouse'.
+execute	Execute Action	2026-09-26T07:52:32.9951556Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:45 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@2506f05d{/SQL,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9952829Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:45 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@7d914f43{/SQL/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9954239Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:45 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@6f5d5e57{/SQL/execution,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9955579Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:45 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@23e5b827{/SQL/execution/json,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9956900Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:45 INFO ContextHandler: Started o.s.j.s.ServletContextHandler@f831d88{/static/sql,null,AVAILABLE,@Spark}
+execute	Execute Action	2026-09-26T07:52:32.9958232Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake=org.apache.iceberg.spark.SparkCatalog
+execute	Execute Action	2026-09-26T07:52:32.9959313Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.client.access-key-id=<len 5>
+execute	Execute Action	2026-09-26T07:52:32.9960346Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.client.region=us-east-1
+execute	Execute Action	2026-09-26T07:52:32.9961380Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.client.secret-access-key=<len 16>
+execute	Execute Action	2026-09-26T07:52:32.9962477Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.io-impl=org.apache.iceberg.aws.s3.S3FileIO
+execute	Execute Action	2026-09-26T07:52:32.9963549Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.access-key-id=<len 5>
+execute	Execute Action	2026-09-26T07:52:32.9964712Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.secret-access-key=<len 16>
+execute	Execute Action	2026-09-26T07:52:32.9965753Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.signing-name=s3
+execute	Execute Action	2026-09-26T07:52:32.9966775Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.signing-region=us-east-1
+execute	Execute Action	2026-09-26T07:52:32.9967786Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.rest.sigv4-enabled=true
+execute	Execute Action	2026-09-26T07:52:32.9968787Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.access-key-id=<len 5>
+execute	Execute Action	2026-09-26T07:52:32.9969942Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.endpoint=http://rustfs-svc.rustfs.svc.cluster.local:9000
+execute	Execute Action	2026-09-26T07:52:32.9971102Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.path-style-access=true
+execute	Execute Action	2026-09-26T07:52:32.9972107Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.region=us-east-1
+execute	Execute Action	2026-09-26T07:52:32.9973242Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.s3.secret-access-key=<len 16>
+execute	Execute Action	2026-09-26T07:52:32.9974316Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.type=rest
+execute	Execute Action	2026-09-26T07:52:32.9975399Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.uri=http://rustfs-svc.rustfs.svc.cluster.local:9000/iceberg
+execute	Execute Action	2026-09-26T07:52:32.9976509Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG spark conf spark.sql.catalog.datalake.warehouse=datalake
+execute	Execute Action	2026-09-26T07:52:32.9977352Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG env RUSTFS_ACCESS_KEY len=5
+execute	Execute Action	2026-09-26T07:52:32.9978091Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG env RUSTFS_SECRET_KEY len=16
+execute	Execute Action	2026-09-26T07:52:32.9978818Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG env AWS_ACCESS_KEY_ID len=5
+execute	Execute Action	2026-09-26T07:52:32.9979568Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG env AWS_SECRET_ACCESS_KEY len=16
+execute	Execute Action	2026-09-26T07:52:32.9980286Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] DEBUG env AWS_REGION len=9
+execute	Execute Action	2026-09-26T07:52:32.9981489Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:46 WARN AuthManagers: The property rest.sigv4-enabled is deprecated and will be removed in a future release. Please use the property rest.auth.type=sigv4 instead.
+execute	Execute Action	2026-09-26T07:52:32.9982996Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:46 INFO AuthManagers: Loading AuthManager implementation: org.apache.iceberg.rest.auth.OAuth2Manager
+execute	Execute Action	2026-09-26T07:52:32.9984407Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:46 INFO AuthManagers: Loading AuthManager implementation: org.apache.iceberg.aws.RESTSigV4AuthManager
+execute	Execute Action	2026-09-26T07:52:32.9985665Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:46 DEBUG Aws4Signer: AWS4 Canonical Request: GET
+execute	Execute Action	2026-09-26T07:52:32.9986445Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] /iceberg/v1/config
+execute	Execute Action	2026-09-26T07:52:32.9987069Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] warehouse=datalake
+execute	Execute Action	2026-09-26T07:52:32.9987728Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] accept:application/json
+execute	Execute Action	2026-09-26T07:52:32.9988416Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] content-type:application/json
+execute	Execute Action	2026-09-26T07:52:32.9989194Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] host:rustfs-svc.rustfs.svc.cluster.local:9000
+execute	Execute Action	2026-09-26T07:52:32.9990174Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:32.9991082Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-amz-date:20260926T073746Z
+execute	Execute Action	2026-09-26T07:52:32.9991799Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-client-git-commit-short:6976e02
+execute	Execute Action	2026-09-26T07:52:32.9992733Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-client-version:Apache Iceberg 1.11.0 (commit 6976e020b894f6a6777704df2b8c4458cb291ae9)
+execute	Execute Action	2026-09-26T07:52:32.9993540Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 
+execute	Execute Action	2026-09-26T07:52:32.9994531Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] accept;content-type;host;x-amz-content-sha256;x-amz-date;x-client-git-commit-short;x-client-version
+execute	Execute Action	2026-09-26T07:52:32.9995641Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:32.9996605Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:46 DEBUG Aws4Signer: AWS4 String to sign: AWS4-HMAC-SHA256
+execute	Execute Action	2026-09-26T07:52:32.9997401Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 20260926T073746Z
+execute	Execute Action	2026-09-26T07:52:32.9998062Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 20260926/us-east-1/s3/aws4_request
+execute	Execute Action	2026-09-26T07:52:32.9999040Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 90507ed26c668a5b0f4b417a6d28ddf3da8e338e67b361a35e5b1985699b2357
+execute	Execute Action	2026-09-26T07:52:33.0000157Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:47 INFO CatalogUtil: Loading custom FileIO implementation: org.apache.iceberg.aws.s3.S3FileIO
+execute	Execute Action	2026-09-26T07:52:33.0001230Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:47 DEBUG Aws4Signer: AWS4 Canonical Request: GET
+execute	Execute Action	2026-09-26T07:52:33.0002051Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] /iceberg/v1/datalake/namespaces
+execute	Execute Action	2026-09-26T07:52:33.0002715Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] pageToken=
+execute	Execute Action	2026-09-26T07:52:33.0003336Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] accept:application/json
+execute	Execute Action	2026-09-26T07:52:33.0004027Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] content-type:application/json
+execute	Execute Action	2026-09-26T07:52:33.0004929Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] host:rustfs-svc.rustfs.svc.cluster.local:9000
+execute	Execute Action	2026-09-26T07:52:33.0005921Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:33.0006819Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-amz-date:20260926T073747Z
+execute	Execute Action	2026-09-26T07:52:33.0007530Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-client-git-commit-short:6976e02
+execute	Execute Action	2026-09-26T07:52:33.0008487Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-client-version:Apache Iceberg 1.11.0 (commit 6976e020b894f6a6777704df2b8c4458cb291ae9)
+execute	Execute Action	2026-09-26T07:52:33.0009295Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 
+execute	Execute Action	2026-09-26T07:52:33.0010157Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] accept;content-type;host;x-amz-content-sha256;x-amz-date;x-client-git-commit-short;x-client-version
+execute	Execute Action	2026-09-26T07:52:33.0011390Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:33.0012363Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:47 DEBUG Aws4Signer: AWS4 String to sign: AWS4-HMAC-SHA256
+execute	Execute Action	2026-09-26T07:52:33.0013140Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 20260926T073747Z
+execute	Execute Action	2026-09-26T07:52:33.0013802Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 20260926/us-east-1/s3/aws4_request
+execute	Execute Action	2026-09-26T07:52:33.0014756Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 2641b8c4f205f239da8f001ee609ff74ce313d521a706032416b359cb4bf38e0
+execute	Execute Action	2026-09-26T07:52:33.0015700Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO CodeGenerator: Code generated in 188.792451 ms
+execute	Execute Action	2026-09-26T07:52:33.0016620Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO CodeGenerator: Code generated in 11.661995 ms
+execute	Execute Action	2026-09-26T07:52:33.0017537Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 DEBUG Aws4Signer: AWS4 Canonical Request: GET
+execute	Execute Action	2026-09-26T07:52:33.0018415Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] /iceberg/v1/datalake/namespaces/d%251Fb/tables
+execute	Execute Action	2026-09-26T07:52:33.0019120Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] pageToken=
+execute	Execute Action	2026-09-26T07:52:33.0019730Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] accept:application/json
+execute	Execute Action	2026-09-26T07:52:33.0020411Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] content-type:application/json
+execute	Execute Action	2026-09-26T07:52:33.0021185Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] host:rustfs-svc.rustfs.svc.cluster.local:9000
+execute	Execute Action	2026-09-26T07:52:33.0022166Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:33.0023080Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-amz-date:20260926T073748Z
+execute	Execute Action	2026-09-26T07:52:33.0023789Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-client-git-commit-short:6976e02
+execute	Execute Action	2026-09-26T07:52:33.0024951Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] x-client-version:Apache Iceberg 1.11.0 (commit 6976e020b894f6a6777704df2b8c4458cb291ae9)
+execute	Execute Action	2026-09-26T07:52:33.0025769Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 
+execute	Execute Action	2026-09-26T07:52:33.0026618Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] accept;content-type;host;x-amz-content-sha256;x-amz-date;x-client-git-commit-short;x-client-version
+execute	Execute Action	2026-09-26T07:52:33.0027711Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+execute	Execute Action	2026-09-26T07:52:33.0028672Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 DEBUG Aws4Signer: AWS4 String to sign: AWS4-HMAC-SHA256
+execute	Execute Action	2026-09-26T07:52:33.0029467Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 20260926T073748Z
+execute	Execute Action	2026-09-26T07:52:33.0030132Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 20260926/us-east-1/s3/aws4_request
+execute	Execute Action	2026-09-26T07:52:33.0030983Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 9c2f76da7f4b0a402dd1d5f74f2287d4d0af1751fa473add88cd03e4d2a11c2f
+execute	Execute Action	2026-09-26T07:52:33.0032141Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] ❌ maintenance: table discovery failed
+execute	Execute Action	2026-09-26T07:52:33.0032893Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] Traceback (most recent call last):
+execute	Execute Action	2026-09-26T07:52:33.0033810Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]   File "/opt/maintenance/..2026_09_26_07_37_27.1888842981/maintenance.py", line 237, in main
+execute	Execute Action	2026-09-26T07:52:33.0034888Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]     tables = discover_tables(spark)
+execute	Execute Action	2026-09-26T07:52:33.0035843Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]   File "/opt/maintenance/..2026_09_26_07_37_27.1888842981/maintenance.py", line 56, in discover_tables
+execute	Execute Action	2026-09-26T07:52:33.0037079Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]     for t_row in spark.sql(f"SHOW TABLES IN {CATALOG}.{namespace}").collect():
+execute	Execute Action	2026-09-26T07:52:33.0038131Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]   File "/opt/spark/python/lib/pyspark.zip/pyspark/sql/session.py", line 1810, in sql
+execute	Execute Action	2026-09-26T07:52:33.0039305Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]     return DataFrame(self._jsparkSession.sql(sqlQuery, litArgs), self)
+execute	Execute Action	2026-09-26T07:52:33.0040393Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]   File "/opt/spark/python/lib/py4j-0.10.9.9-src.zip/py4j/java_gateway.py", line 1362, in __call__
+execute	Execute Action	2026-09-26T07:52:33.0041341Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]     return_value = get_return_value(
+execute	Execute Action	2026-09-26T07:52:33.0042458Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]   File "/opt/spark/python/lib/pyspark.zip/pyspark/errors/exceptions/captured.py", line 282, in deco
+execute	Execute Action	2026-09-26T07:52:33.0043552Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]     return f(*a, **kw)
+execute	Execute Action	2026-09-26T07:52:33.0044958Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]   File "/opt/spark/python/lib/py4j-0.10.9.9-src.zip/py4j/protocol.py", line 327, in get_return_value
+execute	Execute Action	2026-09-26T07:52:33.0045985Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance]     raise Py4JJavaError(
+execute	Execute Action	2026-09-26T07:52:33.0047021Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] py4j.protocol.Py4JJavaError: An error occurred while calling o68.sql.
+execute	Execute Action	2026-09-26T07:52:33.0048783Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] : org.apache.iceberg.exceptions.ForbiddenException: Forbidden: The request signature we calculated does not match the signature you provided. Check your AWS secret access key and signing method. For more information, see REST Authentication and SOAP Authentication for details.
+execute	Execute Action	2026-09-26T07:52:33.0050622Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.rest.ErrorHandlers$DefaultErrorHandler.accept(ErrorHandlers.java:345)
+execute	Execute Action	2026-09-26T07:52:33.0052021Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:285)
+execute	Execute Action	2026-09-26T07:52:33.0053219Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:266)
+execute	Execute Action	2026-09-26T07:52:33.0054499Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.rest.HTTPClient.throwFailure(HTTPClient.java:242)
+execute	Execute Action	2026-09-26T07:52:33.0055529Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:347)
+execute	Execute Action	2026-09-26T07:52:33.0056521Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:299)
+execute	Execute Action	2026-09-26T07:52:33.0057522Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.rest.BaseHTTPClient.get(BaseHTTPClient.java:77)
+execute	Execute Action	2026-09-26T07:52:33.0058607Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.rest.RESTSessionCatalog.listTables(RESTSessionCatalog.java:325)
+execute	Execute Action	2026-09-26T07:52:33.0059808Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.catalog.BaseSessionCatalog$AsCatalog.listTables(BaseSessionCatalog.java:79)
+execute	Execute Action	2026-09-26T07:52:33.0060947Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.rest.RESTCatalog.listTables(RESTCatalog.java:114)
+execute	Execute Action	2026-09-26T07:52:33.0061985Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.CachingCatalog.listTables(CachingCatalog.java:136)
+execute	Execute Action	2026-09-26T07:52:33.0063031Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.iceberg.spark.SparkCatalog.listTables(SparkCatalog.java:428)
+execute	Execute Action	2026-09-26T07:52:33.0064276Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.datasources.v2.ShowTablesExec.run(ShowTablesExec.scala:40)
+execute	Execute Action	2026-09-26T07:52:33.0065690Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result$lzycompute(V2CommandExec.scala:43)
+execute	Execute Action	2026-09-26T07:52:33.0066947Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result(V2CommandExec.scala:43)
+execute	Execute Action	2026-09-26T07:52:33.0068197Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.executeCollect(V2CommandExec.scala:49)
+execute	Execute Action	2026-09-26T07:52:33.0069496Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$2(QueryExecution.scala:155)
+execute	Execute Action	2026-09-26T07:52:33.0070770Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$8(SQLExecution.scala:163)
+execute	Execute Action	2026-09-26T07:52:33.0072008Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.withSessionTagsApplied(SQLExecution.scala:272)
+execute	Execute Action	2026-09-26T07:52:33.0073238Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$7(SQLExecution.scala:125)
+execute	Execute Action	2026-09-26T07:52:33.0074546Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.JobArtifactSet$.withActiveJobArtifactState(JobArtifactSet.scala:94)
+execute	Execute Action	2026-09-26T07:52:33.0075750Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.artifact.ArtifactManager.$anonfun$withResources$1(ArtifactManager.scala:112)
+execute	Execute Action	2026-09-26T07:52:33.0077010Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.artifact.ArtifactManager.withClassLoaderIfNeeded(ArtifactManager.scala:106)
+execute	Execute Action	2026-09-26T07:52:33.0078253Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.artifact.ArtifactManager.withResources(ArtifactManager.scala:111)
+execute	Execute Action	2026-09-26T07:52:33.0079590Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$6(SQLExecution.scala:125)
+execute	Execute Action	2026-09-26T07:52:33.0080813Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:295)
+execute	Execute Action	2026-09-26T07:52:33.0082030Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$1(SQLExecution.scala:124)
+execute	Execute Action	2026-09-26T07:52:33.0083167Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+execute	Execute Action	2026-09-26T07:52:33.0084379Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId0(SQLExecution.scala:78)
+execute	Execute Action	2026-09-26T07:52:33.0085557Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:237)
+execute	Execute Action	2026-09-26T07:52:33.0086797Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$1(QueryExecution.scala:155)
+execute	Execute Action	2026-09-26T07:52:33.0088044Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.QueryExecution$.withInternalError(QueryExecution.scala:654)
+execute	Execute Action	2026-09-26T07:52:33.0089409Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.org$apache$spark$sql$execution$QueryExecution$$eagerlyExecute$1(QueryExecution.scala:154)
+execute	Execute Action	2026-09-26T07:52:33.0090871Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:169)
+execute	Execute Action	2026-09-26T07:52:33.0092412Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:164)
+execute	Execute Action	2026-09-26T07:52:33.0093747Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.catalyst.trees.TreeNode.$anonfun$transformDownWithPruning$1(TreeNode.scala:470)
+execute	Execute Action	2026-09-26T07:52:33.0095059Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:86)
+execute	Execute Action	2026-09-26T07:52:33.0096222Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.catalyst.trees.TreeNode.transformDownWithPruning(TreeNode.scala:470)
+execute	Execute Action	2026-09-26T07:52:33.0097726Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.org$apache$spark$sql$catalyst$plans$logical$AnalysisHelper$$super$transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:33.0099338Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning(AnalysisHelper.scala:360)
+execute	Execute Action	2026-09-26T07:52:33.0100764Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning$(AnalysisHelper.scala:356)
+execute	Execute Action	2026-09-26T07:52:33.0102149Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:33.0103490Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:33.0104822Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.catalyst.trees.TreeNode.transformDown(TreeNode.scala:446)
+execute	Execute Action	2026-09-26T07:52:33.0106024Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.eagerlyExecuteCommands(QueryExecution.scala:164)
+execute	Execute Action	2026-09-26T07:52:33.2232345Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyCommandExecuted$1(QueryExecution.scala:126)
+execute	Execute Action	2026-09-26T07:52:33.2234048Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at scala.util.Try$.apply(Try.scala:217)
+execute	Execute Action	2026-09-26T07:52:33.2235432Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.util.Utils$.doTryWithCallerStacktrace(Utils.scala:1378)
+execute	Execute Action	2026-09-26T07:52:33.2237056Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.util.Utils$.getTryWithCallerStacktrace(Utils.scala:1439)
+execute	Execute Action	2026-09-26T07:52:33.2238865Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.util.LazyTry.get(LazyTry.scala:58)
+execute	Execute Action	2026-09-26T07:52:33.2240100Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.execution.QueryExecution.commandExecuted(QueryExecution.scala:131)
+execute	Execute Action	2026-09-26T07:52:33.2241286Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.classic.Dataset.<init>(Dataset.scala:277)
+execute	Execute Action	2026-09-26T07:52:33.2242346Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.classic.Dataset$.$anonfun$ofRows$5(Dataset.scala:140)
+execute	Execute Action	2026-09-26T07:52:33.2243424Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+execute	Execute Action	2026-09-26T07:52:33.2244605Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.classic.Dataset$.ofRows(Dataset.scala:136)
+execute	Execute Action	2026-09-26T07:52:33.2245677Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.classic.SparkSession.$anonfun$sql$1(SparkSession.scala:462)
+execute	Execute Action	2026-09-26T07:52:33.2246766Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+execute	Execute Action	2026-09-26T07:52:33.2248219Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.classic.SparkSession.sql(SparkSession.scala:449)
+execute	Execute Action	2026-09-26T07:52:33.2249300Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at org.apache.spark.sql.classic.SparkSession.sql(SparkSession.scala:467)
+execute	Execute Action	2026-09-26T07:52:33.2250396Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+execute	Execute Action	2026-09-26T07:52:33.2251786Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+execute	Execute Action	2026-09-26T07:52:33.2255307Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+execute	Execute Action	2026-09-26T07:52:33.2257391Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at java.base/java.lang.reflect.Method.invoke(Method.java:569)
+execute	Execute Action	2026-09-26T07:52:33.2258984Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at py4j.reflection.MethodInvoker.invoke(MethodInvoker.java:244)
+execute	Execute Action	2026-09-26T07:52:33.2260800Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at py4j.reflection.ReflectionEngine.invoke(ReflectionEngine.java:374)
+execute	Execute Action	2026-09-26T07:52:33.2262392Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at py4j.Gateway.invoke(Gateway.java:282)
+execute	Execute Action	2026-09-26T07:52:33.2263880Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at py4j.commands.AbstractCommand.invokeMethod(AbstractCommand.java:132)
+execute	Execute Action	2026-09-26T07:52:33.2265691Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at py4j.commands.CallCommand.execute(CallCommand.java:79)
+execute	Execute Action	2026-09-26T07:52:33.2266943Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at py4j.ClientServerConnection.waitForCommands(ClientServerConnection.java:184)
+execute	Execute Action	2026-09-26T07:52:33.2268419Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at py4j.ClientServerConnection.run(ClientServerConnection.java:108)
+execute	Execute Action	2026-09-26T07:52:33.2269970Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	at java.base/java.lang.Thread.run(Thread.java:840)
+execute	Execute Action	2026-09-26T07:52:33.2271343Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 	Suppressed: org.apache.spark.util.Utils$OriginalTryStackTraceException: Full stacktrace of original doTryWithCallerStacktrace caller
+execute	Execute Action	2026-09-26T07:52:33.2272852Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.rest.ErrorHandlers$DefaultErrorHandler.accept(ErrorHandlers.java:345)
+execute	Execute Action	2026-09-26T07:52:33.2274044Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:285)
+execute	Execute Action	2026-09-26T07:52:33.2275691Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.rest.ErrorHandlers$NamespaceErrorHandler.accept(ErrorHandlers.java:266)
+execute	Execute Action	2026-09-26T07:52:33.2277252Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.rest.HTTPClient.throwFailure(HTTPClient.java:242)
+execute	Execute Action	2026-09-26T07:52:33.2278304Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:347)
+execute	Execute Action	2026-09-26T07:52:33.2279297Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.rest.HTTPClient.execute(HTTPClient.java:299)
+execute	Execute Action	2026-09-26T07:52:33.2280297Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.rest.BaseHTTPClient.get(BaseHTTPClient.java:77)
+execute	Execute Action	2026-09-26T07:52:33.2281403Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.rest.RESTSessionCatalog.listTables(RESTSessionCatalog.java:325)
+execute	Execute Action	2026-09-26T07:52:33.2282607Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.catalog.BaseSessionCatalog$AsCatalog.listTables(BaseSessionCatalog.java:79)
+execute	Execute Action	2026-09-26T07:52:33.2283930Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.rest.RESTCatalog.listTables(RESTCatalog.java:114)
+execute	Execute Action	2026-09-26T07:52:33.2285908Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.CachingCatalog.listTables(CachingCatalog.java:136)
+execute	Execute Action	2026-09-26T07:52:33.2286986Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.iceberg.spark.SparkCatalog.listTables(SparkCatalog.java:428)
+execute	Execute Action	2026-09-26T07:52:33.2288135Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.datasources.v2.ShowTablesExec.run(ShowTablesExec.scala:40)
+execute	Execute Action	2026-09-26T07:52:33.2289396Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result$lzycompute(V2CommandExec.scala:43)
+execute	Execute Action	2026-09-26T07:52:33.2290668Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.result(V2CommandExec.scala:43)
+execute	Execute Action	2026-09-26T07:52:33.2291929Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.datasources.v2.V2CommandExec.executeCollect(V2CommandExec.scala:49)
+execute	Execute Action	2026-09-26T07:52:33.2293232Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$2(QueryExecution.scala:155)
+execute	Execute Action	2026-09-26T07:52:33.2294759Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$8(SQLExecution.scala:163)
+execute	Execute Action	2026-09-26T07:52:33.2296046Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.withSessionTagsApplied(SQLExecution.scala:272)
+execute	Execute Action	2026-09-26T07:52:33.2297320Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$7(SQLExecution.scala:125)
+execute	Execute Action	2026-09-26T07:52:33.2298542Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.JobArtifactSet$.withActiveJobArtifactState(JobArtifactSet.scala:94)
+execute	Execute Action	2026-09-26T07:52:33.2299753Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.artifact.ArtifactManager.$anonfun$withResources$1(ArtifactManager.scala:112)
+execute	Execute Action	2026-09-26T07:52:33.2301178Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.artifact.ArtifactManager.withClassLoaderIfNeeded(ArtifactManager.scala:106)
+execute	Execute Action	2026-09-26T07:52:33.2302434Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.artifact.ArtifactManager.withResources(ArtifactManager.scala:111)
+execute	Execute Action	2026-09-26T07:52:33.2303655Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$6(SQLExecution.scala:125)
+execute	Execute Action	2026-09-26T07:52:33.2305129Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.withSQLConfPropagated(SQLExecution.scala:295)
+execute	Execute Action	2026-09-26T07:52:33.2306361Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.$anonfun$withNewExecutionId0$1(SQLExecution.scala:124)
+execute	Execute Action	2026-09-26T07:52:33.2307509Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.SparkSession.withActive(SparkSession.scala:804)
+execute	Execute Action	2026-09-26T07:52:33.2308613Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId0(SQLExecution.scala:78)
+execute	Execute Action	2026-09-26T07:52:33.2309824Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.SQLExecution$.withNewExecutionId(SQLExecution.scala:237)
+execute	Execute Action	2026-09-26T07:52:33.2311069Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.$anonfun$eagerlyExecuteCommands$1(QueryExecution.scala:155)
+execute	Execute Action	2026-09-26T07:52:33.2312324Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.QueryExecution$.withInternalError(QueryExecution.scala:654)
+execute	Execute Action	2026-09-26T07:52:33.2313846Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.org$apache$spark$sql$execution$QueryExecution$$eagerlyExecute$1(QueryExecution.scala:154)
+execute	Execute Action	2026-09-26T07:52:33.2315582Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:169)
+execute	Execute Action	2026-09-26T07:52:33.2316997Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.QueryExecution$$anonfun$eagerlyExecuteCommands$3.applyOrElse(QueryExecution.scala:164)
+execute	Execute Action	2026-09-26T07:52:33.2318332Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.catalyst.trees.TreeNode.$anonfun$transformDownWithPruning$1(TreeNode.scala:470)
+execute	Execute Action	2026-09-26T07:52:33.2319538Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.catalyst.trees.CurrentOrigin$.withOrigin(origin.scala:86)
+execute	Execute Action	2026-09-26T07:52:33.2320713Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.catalyst.trees.TreeNode.transformDownWithPruning(TreeNode.scala:470)
+execute	Execute Action	2026-09-26T07:52:33.2322227Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.org$apache$spark$sql$catalyst$plans$logical$AnalysisHelper$$super$transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:33.2323859Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning(AnalysisHelper.scala:360)
+execute	Execute Action	2026-09-26T07:52:33.2325666Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.AnalysisHelper.transformDownWithPruning$(AnalysisHelper.scala:356)
+execute	Execute Action	2026-09-26T07:52:33.2327056Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:33.2328409Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.catalyst.plans.logical.LogicalPlan.transformDownWithPruning(LogicalPlan.scala:37)
+execute	Execute Action	2026-09-26T07:52:33.2329793Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.catalyst.trees.TreeNode.transformDown(TreeNode.scala:446)
+execute	Execute Action	2026-09-26T07:52:33.2330989Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.eagerlyExecuteCommands(QueryExecution.scala:164)
+execute	Execute Action	2026-09-26T07:52:33.2332273Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.sql.execution.QueryExecution.$anonfun$lazyCommandExecuted$1(QueryExecution.scala:126)
+execute	Execute Action	2026-09-26T07:52:33.2333315Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at scala.util.Try$.apply(Try.scala:217)
+execute	Execute Action	2026-09-26T07:52:33.2334450Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.util.Utils$.doTryWithCallerStacktrace(Utils.scala:1378)
+execute	Execute Action	2026-09-26T07:52:33.2335493Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.util.LazyTry.tryT$lzycompute(LazyTry.scala:46)
+execute	Execute Action	2026-09-26T07:52:33.2336444Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		at org.apache.spark.util.LazyTry.tryT(LazyTry.scala:46)
+execute	Execute Action	2026-09-26T07:52:33.2337196Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 		... 22 more
+execute	Execute Action	2026-09-26T07:52:33.2337749Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 
+execute	Execute Action	2026-09-26T07:52:33.2338682Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO SparkContext: SparkContext is stopping with exitCode 0 from stop at NativeMethodAccessorImpl.java:0.
+execute	Execute Action	2026-09-26T07:52:33.2339860Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO Server: Stopped Server@1e33d315{STOPPING}[11.0.24,sto=30000]
+execute	Execute Action	2026-09-26T07:52:33.2341032Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO Server: Shutdown Server@1e33d315{STOPPING}[11.0.24,sto=30000]
+execute	Execute Action	2026-09-26T07:52:33.2342120Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO AbstractConnector: Stopped Spark@50ea50b0{HTTP/1.1, (http/1.1)}{0.0.0.0:4040}
+execute	Execute Action	2026-09-26T07:52:33.2343310Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO SparkUI: Stopped Spark web UI at http://manual-maintenance-20260926-073725-n9vsz:4040
+execute	Execute Action	2026-09-26T07:52:33.2344792Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO MapOutputTrackerMasterEndpoint: MapOutputTrackerMasterEndpoint stopped!
+execute	Execute Action	2026-09-26T07:52:33.2345886Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO MemoryStore: MemoryStore started with capacity 434.4 MiB
+execute	Execute Action	2026-09-26T07:52:33.2346828Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO MemoryStore: MemoryStore cleared
+execute	Execute Action	2026-09-26T07:52:33.2347703Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO BlockManager: BlockManager stopped
+execute	Execute Action	2026-09-26T07:52:33.2348617Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO BlockManagerMaster: BlockManagerMaster stopped
+execute	Execute Action	2026-09-26T07:52:33.2349743Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO OutputCommitCoordinator$OutputCommitCoordinatorEndpoint: OutputCommitCoordinator stopped!
+execute	Execute Action	2026-09-26T07:52:33.2350885Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO SparkContext: Successfully stopped SparkContext
+execute	Execute Action	2026-09-26T07:52:33.2351820Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO ShutdownHookManager: Shutdown hook called
+execute	Execute Action	2026-09-26T07:52:33.2352916Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO ShutdownHookManager: Deleting directory /tmp/artifacts-2b49794a-e436-43cd-9d50-805001e2edb5
+execute	Execute Action	2026-09-26T07:52:33.2354561Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO ShutdownHookManager: Deleting directory /tmp/spark-751ec36d-24bd-4a0b-8131-97c4a4ff7851/pyspark-12bde718-bf2d-419e-af33-6fb604f0ef6c
+execute	Execute Action	2026-09-26T07:52:33.2356125Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO ShutdownHookManager: Deleting directory /tmp/spark-751ec36d-24bd-4a0b-8131-97c4a4ff7851
+execute	Execute Action	2026-09-26T07:52:33.2357355Z [pod/manual-maintenance-20260926-073725-n9vsz/maintenance] 26/09/26 07:37:48 INFO ShutdownHookManager: Deleting directory /tmp/spark-ade86e82-11e9-4b28-81b7-bde779cdc00b
