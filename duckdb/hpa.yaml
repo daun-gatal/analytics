@@ -29,6 +29,8 @@ spec:
           value: 1
           periodSeconds: 120
 
+  # CPU only. Memory sizing is owned by the VPA (vpa.yaml) — an HPA and a VPA
+  # on the same resource form a feedback loop, so each gets one resource.
   metrics:
     - type: Resource
       resource:
@@ -36,10 +38,3 @@ spec:
         target:
           type: Utilization
           averageUtilization: 65
-
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 75

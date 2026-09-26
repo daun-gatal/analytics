@@ -1,0 +1,38 @@
+# VPA — memory sizing owner for duckdb.
+#
+# Split autoscaling: the HPA (hpa.yaml) keeps CPU; this VPA controls memory
+# only — an HPA and a VPA on the same resource form a feedback loop.
+#
+# Requires the VPA controllers in the cluster (official SIG-autoscaling chart):
+#   helm install vpa autoscaler/vertical-pod-autoscaler --version 0.13.0
+#
+# updateMode Auto applies new requests by evicting the pod — a brief restart;
+# the in-memory database reloads from init.sql. Use "Initial" instead to
+# resize only the pods the HPA creates, without ever evicting the live one.
+#
+# The request feeds deployment.yaml's Downward API env
+# (DUCKDB_MEMORY_REQUEST_BYTES); init.sql caps the buffer manager at 85% of
+# it, so DuckDB's memory_limit always tracks whatever request the VPA sets.
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: duckdb
+  namespace: analytics
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: duckdb
+  updatePolicy:
+    updateMode: "Auto"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: duckdb
+        minAllowed:
+          memory: 2Gi
+        maxAllowed:
+          # 3 replicas (HPA max) x 6Gi = 18Gi worst case — must fit the node
+          memory: 6Gi
+        controlledResources:
+          - memory
+        controlledValues: RequestsOnly
