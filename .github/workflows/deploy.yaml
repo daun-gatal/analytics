@@ -480,6 +480,37 @@ jobs:
                       print("METADATA-JSON-END", flush=True)
               except Exception as e:
                   print(f"[meta {ns}.{table}] ERROR {e}", flush=True)
+
+          # ── dangling-pointer forensics ────────────────────────────────
+          # The broken tables point at metadata files that 404 (NoSuchKey).
+          # 1) is the hidden .rustfs-table prefix listable at all?
+          # 2) does the metadata file that was current yesterday still exist
+          #    (pointer could be repaired back to it)?
+          for ns, table in (("events", "wikipedia_edits"), ("web", "github_events")):
+              prefix = f".rustfs-table/warehouses/default/namespaces/{ns}/tables/{table}/"
+              try:
+                  listed = s3.list_objects_v2(Bucket="datalake", Prefix=prefix)
+                  keys = [o["Key"] for o in listed.get("Contents", [])]
+                  print(f"[ls {ns}.{table}] {len(keys)} object(s) under {prefix}", flush=True)
+                  meta_keys = sorted(k for k in keys if ".metadata.json" in k)
+                  for k in meta_keys[-5:]:
+                      print(f"[ls {ns}.{table}]   {k}", flush=True)
+                  if meta_keys:
+                      newest = meta_keys[-1]
+                      obj = s3.get_object(Bucket="datalake", Key=newest)
+                      data = obj["Body"].read()
+                      print(f"[repair-candidate {ns}.{table}] {newest} ({len(data)} bytes) exists and is readable", flush=True)
+              except Exception as e:
+                  print(f"[ls {ns}.{table}] ERROR {e}", flush=True)
+
+          # known pointer of events.wikipedia_edits as of yesterday's probe
+          known = ".rustfs-table/warehouses/default/namespaces/events/tables/wikipedia_edits/metadata/00164-4b3f842a-7b37-4089-b2bd-0b992d66b4a.metadata.json"
+          try:
+              obj = s3.get_object(Bucket="datalake", Key=known)
+              data = obj["Body"].read()
+              print(f"[known-key wikipedia_edits] EXISTS ({len(data)} bytes)", flush=True)
+          except Exception as e:
+              print(f"[known-key wikipedia_edits] {e}", flush=True)
           PYEOF
                   ;;
                 *) echo "❌ sigprobe not supported for $TARGET" && exit 1 ;;
