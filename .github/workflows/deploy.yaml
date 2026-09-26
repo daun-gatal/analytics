@@ -535,7 +535,10 @@ jobs:
               # ignores FAILED jobs and used to block the full 480s even
               # though the pod died in the first 30s. 'failed' is a real
               # Job condition, so both outcomes break the loop immediately.
-              DEADLINE=$(( $(date +%s) + 900 ))
+              # 30 min cap: a healthy cycle over backfilled tables takes
+              # several minutes of real Spark work (orphan scans run
+              # 480-task stages), so the old 8 min wait was never enough.
+              DEADLINE=$(( $(date +%s) + 1800 ))
               JOB_OK=""
               while [ "$(date +%s)" -lt "$DEADLINE" ]; do
                 if kubectl wait --for=condition=complete --timeout=10s "job/$JOB" -n analytics >/dev/null 2>&1; then
