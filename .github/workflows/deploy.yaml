@@ -13,6 +13,7 @@ on:
           - rustfs
           - maintenance
           - generator
+          - openmetadata
         default: all
       action:
         description: 'Kubectl Action'
@@ -30,8 +31,10 @@ on:
           - sigprobe
           - trigger
           - repair
+          - bootstrap-openmetadata
+          - sync-catalog
       force_rebuild:
-        description: 'Rebuild both images even if unchanged since last push'
+        description: 'Rebuild all images even if unchanged since last push'
         required: false
         type: boolean
         default: false
@@ -51,9 +54,9 @@ on:
 
 jobs:
   build-image:
-    # Builds the Iceberg maintenance Spark image and the data generator
-    # image, publishing both as PUBLIC GHCR packages — the cluster pulls
-    # them without a pull secret.
+    # Builds the Iceberg maintenance Spark image, the data generator image
+    # and the OpenMetadata catalog-sync image, publishing them as PUBLIC
+    # GHCR packages — the cluster pulls them without a pull secret.
     # Note: the very first push creates a package PRIVATE; flip it to
     # public once (GitHub → Packages → <name> → visibility).
     #
@@ -67,13 +70,16 @@ jobs:
     #   generator           → generator/** minus *.yaml (the Dockerfile
     #                         and the two baked-in .py scripts; kustomize
     #                         manifests are not part of the image)
+    #   catalog-sync        → openmetadata/sync/image/** (the reconciler
+    #                         script ships via ConfigMap — kustomize yaml
+    #                         and contract files are not image inputs)
     # Detection is fail-open (any registry/git hiccup keeps the build),
     # and `force_rebuild` bypasses it. Read-only actions skip the job
-    # entirely: the maintenance script ships via ConfigMap (no image
-    # rebuild), so the fix loop iterates on logs/trigger/sigprobe in
-    # ~2-3 min instead of ~10. Run an `apply` after touching
+    # entirely: the maintenance/catalog-sync scripts ship via ConfigMap
+    # (no image rebuild), so the fix loop iterates on logs/trigger/
+    # sigprobe in ~2-3 min instead of ~10. Run an `apply` after touching
     # maintenance/image/Dockerfile — detection picks it up; no force needed.
-    if: ${{ !(inputs.action == 'logs' || inputs.action == 'trigger' || inputs.action == 'sigprobe') }}
+    if: ${{ !(inputs.action == 'logs' || inputs.action == 'trigger' || inputs.action == 'sigprobe' || inputs.action == 'bootstrap-openmetadata' || inputs.action == 'sync-catalog') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -107,9 +113,10 @@ jobs:
           REPO="${GITHUB_REPOSITORY,,}"
 
           if [ "${{ inputs.force_rebuild }}" = "true" ]; then
-            echo "▸ force_rebuild — building both images"
+            echo "▸ force_rebuild — building all images"
             echo "maintenance=1" >> "$GITHUB_OUTPUT"
             echo "generator=1" >> "$GITHUB_OUTPUT"
+            echo "catalog=1" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -148,6 +155,9 @@ jobs:
           # generator: everything under generator/ except the kustomize
           # yaml (manifests don't end up in the image)
           gate generator generator -- generator ':(exclude)generator/*.yaml'
+          # catalog-sync: only the image dir — the reconciler script ships
+          # via ConfigMap, so contract/manifest edits don't rebuild
+          gate catalog-sync catalog -- openmetadata/sync/image
 
       - name: Build and push
         if: ${{ steps.changes.outputs.maintenance != '0' }}
@@ -173,6 +183,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push catalog-sync
+        if: ${{ steps.changes.outputs.catalog != '0' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: openmetadata/sync/image
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/catalog-sync:latest
+            ghcr.io/${{ github.repository }}/catalog-sync:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   execute:
     needs: build-image
     # always() + result check: build-image is skipped for read-only actions
@@ -188,12 +210,16 @@ jobs:
       RUSTFS_SECRET_KEY: ${{ secrets.RUSTFS_SECRET_KEY }}
       DUCKFLIGHT_USER: ${{ secrets.DUCKFLIGHT_USER }}
       DUCKFLIGHT_PASSWORD: ${{ secrets.DUCKFLIGHT_PASSWORD }}
+      OM_MYSQL_ROOT_PASSWORD: ${{ secrets.OM_MYSQL_ROOT_PASSWORD }}
+      OM_MYSQL_PASSWORD: ${{ secrets.OM_MYSQL_PASSWORD }}
+      OM_FERNET_KEY: ${{ secrets.OM_FERNET_KEY }}
+      OM_ADMIN_PASSWORD: ${{ secrets.OM_ADMIN_PASSWORD }}
     steps:
       - name: Validate module
         run: |
           case "${MODULE_PATH}" in
-            .|duckdb|rustfs|maintenance|generator) ;;
-            *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs, maintenance, generator)" && exit 1 ;;
+            .|duckdb|rustfs|maintenance|generator|openmetadata) ;;
+            *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs, maintenance, generator, openmetadata)" && exit 1 ;;
           esac
 
       - uses: actions/checkout@v4
@@ -239,7 +265,7 @@ jobs:
 
       - name: Ensure Namespaces
         run: |
-          for NS in analytics rustfs; do
+          for NS in analytics rustfs openmetadata; do
             echo "→ ensuring namespace/$NS"
             kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
           done
@@ -255,6 +281,38 @@ jobs:
             --from-literal=RUSTFS_SECRET_KEY="${RUSTFS_SECRET_KEY}" \
             --dry-run=client -o yaml | kubectl apply -f -
           kubectl create secret generic duckflight-auth -n analytics \
+            --from-literal=username="${DUCKFLIGHT_USER}" \
+            --from-literal=password="${DUCKFLIGHT_PASSWORD}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          # ── OpenMetadata module secrets (ns openmetadata) ─────────────
+          # One MySQL secret feeds BOTH consumers: the bitnami chart
+          # (auth.existingSecret, keys mysql-root-password/mysql-password)
+          # and the OM server (database.auth.password.secretRef, key
+          # openmetadata-mysql-password). Same password for the app-user
+          # keys — one GitHub Secret pair, three stamped keys.
+          if [ -n "${OM_MYSQL_ROOT_PASSWORD}" ] && [ -n "${OM_MYSQL_PASSWORD}" ]; then
+            kubectl create secret generic mysql-secrets -n openmetadata \
+              --from-literal=mysql-root-password="${OM_MYSQL_ROOT_PASSWORD}" \
+              --from-literal=mysql-password="${OM_MYSQL_PASSWORD}" \
+              --from-literal=openmetadata-mysql-password="${OM_MYSQL_PASSWORD}" \
+              --dry-run=client -o yaml | kubectl apply -f -
+          else
+            echo "⚠ OM_MYSQL_ROOT_PASSWORD / OM_MYSQL_PASSWORD unset — mysql-secrets NOT stamped (server will stay CrashLooping until they are)"
+          fi
+          if [ -n "${OM_FERNET_KEY}" ]; then
+            kubectl create secret generic openmetadata-fernet -n openmetadata \
+              --from-literal=openmetadata-fernet-key="${OM_FERNET_KEY}" \
+              --dry-run=client -o yaml | kubectl apply -f -
+          else
+            echo "⚠ OM_FERNET_KEY unset — openmetadata-fernet NOT stamped (server refuses to start without it)"
+          fi
+          # catalog-sync reads the lake/connection facts via these copies
+          # (RBAC-scoped by name — see openmetadata/sync/rbac.yaml)
+          kubectl create secret generic rustfs-credentials -n openmetadata \
+            --from-literal=RUSTFS_ACCESS_KEY="${RUSTFS_ACCESS_KEY}" \
+            --from-literal=RUSTFS_SECRET_KEY="${RUSTFS_SECRET_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic duckflight-auth -n openmetadata \
             --from-literal=username="${DUCKFLIGHT_USER}" \
             --from-literal=password="${DUCKFLIGHT_PASSWORD}" \
             --dry-run=client -o yaml | kubectl apply -f -
@@ -319,6 +377,34 @@ jobs:
               esac
               echo "▶ Syncing duckdb with deployed rustfs"
               bash scripts/sync-duckdb-rustfs.sh
+              case "$TARGET" in
+                "."|all|openmetadata)
+                  # OpenMetadata onboarding: wait for server health, then
+                  # (a) bootstrap (idempotent — admin password rotate-once +
+                  # bot token stamp) when OM_ADMIN_PASSWORD is configured,
+                  # (b) one catalog reconciliation run so lineage appears
+                  # in the same deploy; the CronJob keeps converging hourly.
+                  if kubectl get deployment/openmetadata -n openmetadata >/dev/null 2>&1; then
+                    echo "▶ Waiting for OpenMetadata server health"
+                    DEADLINE=$(( $(date +%s) + 600 ))
+                    until kubectl get --raw="/api/v1/namespaces/openmetadata/services/http:openmetadata:8585/proxy/api/v1/system/health" >/dev/null 2>&1; do
+                      [ "$(date +%s)" -ge "$DEADLINE" ] && { echo "⚠ server not healthy in 10m — catalog-sync CronJob will retry hourly"; break; }
+                      sleep 15
+                    done
+                    if [ -n "${OM_ADMIN_PASSWORD}" ]; then
+                      bash scripts/bootstrap-openmetadata.sh || echo "⚠ bootstrap failed — fix and run action=bootstrap-openmetadata"
+                    else
+                      echo "⚠ OM_ADMIN_PASSWORD unset — skipping bootstrap (bot token missing, catalog-sync cannot run yet)"
+                    fi
+                    if kubectl get secret/openmetadata-bot -n openmetadata >/dev/null 2>&1 \
+                       && kubectl get cronjob/catalog-sync -n openmetadata >/dev/null 2>&1; then
+                      STAMP=$(date -u +%Y%m%d-%H%M%S)
+                      kubectl create job --from=cronjob/catalog-sync "manual-catalog-sync-$STAMP" -n openmetadata || true
+                      echo "→ catalog reconciliation job manual-catalog-sync-$STAMP created (logs: action=logs module=openmetadata)"
+                    fi
+                  fi
+                  ;;
+              esac
               ;;
             diff)
               echo "▶ Diff $TARGET (like terraform refresh)"
@@ -341,13 +427,16 @@ jobs:
               # space-joined string that word-split into broken invocations.
               case "$TARGET" in
                 "."|all)
-                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics" "deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics")
+                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics" "deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics" "deployment/openmetadata -n openmetadata")
                   ;;
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
                 rustfs) TARGETS=("statefulset/rustfs -n rustfs") ;;
                 maintenance) TARGETS=("cronjob/iceberg-maintenance-daily -n analytics") ;;
                 generator)
                   TARGETS=("deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics")
+                  ;;
+                openmetadata)
+                  TARGETS=("deployment/openmetadata -n openmetadata" "statefulset/opensearch -n openmetadata")
                   ;;
                 *) TARGETS=("$TARGET") ;;
               esac
@@ -364,10 +453,22 @@ jobs:
             logs)
               echo "▶ Dumping recent logs for $TARGET"
               case "$TARGET" in
-                "."|all) TARGETS=("deployment/duckdb -n analytics" "deployment/generator-stream -n analytics") ;;
+                "."|all) TARGETS=("deployment/duckdb -n analytics" "deployment/generator-stream -n analytics" "deployment/openmetadata -n openmetadata") ;;
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
                 rustfs) TARGETS=("statefulset/rustfs -n rustfs" "job/rustfs-bootstrap -n rustfs") ;;
                 generator) TARGETS=("deployment/generator-stream -n analytics") ;;
+                openmetadata)
+                  # catalog evidence: server + search + the newest catalog-sync run
+                  kubectl get pods -n openmetadata || true
+                  kubectl get jobs -n openmetadata --sort-by=.metadata.creationTimestamp | tail -4 || true
+                  for JOB in $(kubectl get jobs -n openmetadata --sort-by=.metadata.creationTimestamp -o name | tail -1); do
+                    for POD in $(kubectl get pods -n openmetadata --selector="job-name=${JOB#job/}" -o name); do
+                      echo "→ kubectl logs $POD --tail=2000"
+                      kubectl logs -n openmetadata "$POD" --tail=2000 --prefix=true || true
+                    done
+                  done
+                  TARGETS=("deployment/openmetadata -n openmetadata")
+                  ;;
                 # maintenance has no long-running pod — its evidence lives in
                 # the cronjob status + job listings below.
                 maintenance) TARGETS=() ;;
@@ -690,6 +791,54 @@ jobs:
                 exit 1
               fi
               echo "✅ $JOB completed"
+              ;;
+            bootstrap-openmetadata)
+              # One-time per-platform ramp (also the password/token rotation
+              # entrypoint). Requires the server to be up: run an `apply`
+              # with module=openmetadata|all first if needed.
+              echo "▶ Bootstrapping OpenMetadata (admin password + catalog-sync bot)"
+              bash scripts/bootstrap-openmetadata.sh
+              ;;
+            sync-catalog)
+              # Fire the catalog reconciliation CronJob once, right now —
+              # verify the lineage/connector changes without waiting for the
+              # hourly schedule. Requires the bot secret: run
+              # action=bootstrap-openmetadata first.
+              echo "▶ Triggering catalog reconciliation for $TARGET"
+              case "$TARGET" in
+                openmetadata) CRON="cronjob/catalog-sync -n openmetadata" ;;
+                *) echo "❌ sync-catalog not supported for $TARGET (use module=openmetadata)" && exit 1 ;;
+              esac
+              if ! kubectl get secret/openmetadata-bot -n openmetadata >/dev/null 2>&1; then
+                echo "❌ Secret/openmetadata-bot missing — run action=bootstrap-openmetadata first"
+                exit 1
+              fi
+              STAMP=$(date -u +%Y%m%d-%H%M%S)
+              JOB="manual-catalog-sync-$STAMP"
+              kubectl create job --from=$CRON "$JOB" -n openmetadata
+              echo "→ created job $JOB; watching it (max 15m)"
+              DEADLINE=$(( $(date +%s) + 900 ))
+              JOB_OK=""
+              while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+                if kubectl wait --for=condition=complete --timeout=10s "job/$JOB" -n openmetadata >/dev/null 2>&1; then
+                  JOB_OK=1
+                  break
+                fi
+                if kubectl wait --for=condition=failed --timeout=1s "job/$JOB" -n openmetadata >/dev/null 2>&1; then
+                  break
+                fi
+              done
+              echo "→ job/$JOB status:"
+              kubectl get job "$JOB" -n openmetadata -o wide || true
+              for POD in $(kubectl get pods -n openmetadata --selector="job-name=$JOB" -o name); do
+                echo "→ kubectl logs $POD --tail=20000"
+                kubectl logs -n openmetadata "$POD" --tail=20000 --prefix=true || true
+              done
+              if [ -z "$JOB_OK" ]; then
+                echo "❌ $JOB did not complete successfully"
+                exit 1
+              fi
+              echo "✅ $JOB completed — catalog converged"
               ;;
             repair)
               # Drop tables whose catalog entries RustFS 1.0.0 broke

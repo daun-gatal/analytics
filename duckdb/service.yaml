@@ -6,6 +6,16 @@ metadata:
   annotations:
     tailscale.com/expose: 'true'
     tailscale.com/hostname: duckdb
+    #
+    # catalog-sync plane A: this Service is a queryable catalog source.
+    # The reconciler derives the connector connection from the live
+    # Service (host/port from the `postgres` port, credentials from the
+    # secret named below) — rich options live in
+    # openmetadata/sync/contracts/connectors.yaml instead.
+    catalog.io/connector: postgres
+    catalog.io/secret: duckflight-auth
+    catalog.io/database: datalake
+    catalog.io/owner: data-platform
 spec:
   ports:
     - name: postgres

@@ -1,0 +1,80 @@
+# deps-values.yaml — openmetadata-dependencies chart (v2.0.2).
+#
+# The deps chart bundles mysql (bitnami 14.0.2), opensearch (3.3.2),
+# airflow (1.19.0) and fuseki. This platform keeps exactly TWO of them:
+#   * OpenSearch  — the OM search backend (hard requirement)
+#   * MySQL       — the OM metadata DB (hard requirement: Liquibase
+#                   migrations + concurrent writers; DuckDB/DuckFlight
+#                   was rejected for catalog storage — query-oriented
+#                   wire protocol + stateless :memory: pods don't hold
+#                   a system of record)
+#
+# Airflow is fully replaced by OM's native k8s Jobs ingestion
+# (see values.yaml pipelineServiceClientConfig) and fuseki (RDF) is off.
+
+global:
+  security:
+    allowInsecureImages: true   # bitnami legacy image repo (chart default)
+
+mysql:
+  enabled: true
+  fullnameOverride: mysql
+  architecture: standalone
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/mysql
+    tag: 8.0.37-debian-12-r2
+    pullPolicy: IfNotPresent    # chart default Always — same reasoning as the
+                                # server image: restarts must not re-pull
+  auth:
+    # CI stamps Secret/mysql-secrets in ns/openmetadata from GitHub secrets
+    # OM_MYSQL_ROOT_PASSWORD / OM_MYSQL_PASSWORD, with THREE keys:
+    #   mysql-root-password          <- bitnami root
+    #   mysql-password               <- openmetadata_user password (bitnami creates it)
+    #   openmetadata-mysql-password  <- same value, read by the OM server chart
+    # Bitnami natively creates database+user from these fields — no SQL
+    # initdb scripts with literal demo passwords (the deps-chart defaults
+    # are removed via `initdbScripts: null` below).
+    existingSecret: mysql-secrets
+    username: openmetadata_user
+    database: openmetadata_db
+    # [CRITICAL] kill the deps chart's default initdbScripts — they run
+    # `CREATE USER ... IDENTIFIED BY 'openmetadata_password'` (a public
+    # demo credential) and would conflict with bitnami's own user creation.
+    initdbScripts: null
+  primary:
+    extraFlags: "--sort_buffer_size=10M"
+    persistence:
+      size: 50Gi
+      storageClass: longhorn    # cluster's StorageClass (rustfs uses it too)
+
+opensearch:
+  enabled: true
+  clusterName: opensearch
+  fullnameOverride: opensearch
+  nodeGroup: ""
+  imagePullPolicy: IfNotPresent
+  # 2Gi heap — OM's reindexing is search-heavy; the deps-chart default 1Gi
+  # OOMs during bulk index of a populated catalog.
+  opensearchJavaOpts: "-Xmx2g -Xms2g"
+  protocol: http
+  singleNode: true
+  antiAffinity: soft            # required (default hard) is fine on a
+                                # single-replica STS, but soft is explicit
+                                # and survives topology changes
+  persistence:
+    size: 30Gi
+    storageClass: longhorn
+  resources:
+    requests:
+      cpu: 300m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 3Gi
+
+airflow:
+  enabled: false   # native k8s ingestion replaces Airflow (values.yaml [3])
+
+fuseki:
+  enabled: false   # RDF feature off

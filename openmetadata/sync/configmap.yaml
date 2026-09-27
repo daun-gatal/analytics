@@ -1,0 +1,774 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: catalog-sync-config
+  namespace: openmetadata
+data:
+  #
+  # catalog-sync orchestrator — the ONE reconciliation engine (Plane A+ B):
+  #   Plane A: ConnectorRegistry contracts + Services annotated
+  #            catalog.io/connector -> OM databaseService + scheduled
+  #            ingestion pipelines (metadata/profiler/usage).
+  #   Plane B: LineageContract ConfigMaps + workloads annotated
+  #            catalog.io/produces -> pipeline entities + lineage edges
+  #            (source -> pipeline -> table) with column lineage.
+  #
+  # Env-driven runtime facts (no repo secrets):
+  #   duckdb-settings ConfigMap   -> RUSTFS_PROTOCOL/_HOST/_PORT/_REGION
+  #   rustfs-credentials Secret   -> RUSTFS_ACCESS_KEY/_SECRET_KEY
+  #   openmetadata-bot Secret     -> OM_BOT_TOKEN (bootstrap action)
+  #   RECON_* knobs below tune discovery/ownership per environment.
+  # Idempotent, additive-only; entities the reconciler does not own are
+  # preserved (human UI annotations survive).
+  catalog-sync.py: |
+    #!/usr/bin/env python3
+    """OpenMetadata catalog orchestrator for the analytics platform.
+
+    Single reconciliation engine over the two onboarding planes:
+      Plane A — queryable sources: ConnectorRegistry contracts + Services
+                annotated catalog.io/connector -> OM databaseService with LIVE
+                connection facts + scheduled ingestion pipelines.
+      Plane B — producers: LineageContract contracts + Deployments/CronJobs
+                annotated catalog.io/produces -> OM pipelineService/pipeline
+                entities and lineage edges (source -> pipeline -> lake table)
+                with column-level lineage from contract column maps.
+
+    Runtime facts are env-driven like maintenance.py (no repo secrets):
+      duckdb-settings ConfigMap -> RUSTFS_PROTOCOL/_HOST/_PORT/_REGION
+      rustfs-credentials Secret -> RUSTFS_ACCESS_KEY/_SECRET_KEY
+      openmetadata-bot Secret   -> OM_BOT_TOKEN (stamped by the bootstrap action)
+    Idempotent: GET-then-PUT convergence, additive only, owns nothing it didn't
+    create or that contracts don't declare — human UI annotations survive.
+    Exit codes: 0 converged; 3 unreconcilable (failures list on stderr).
+    """
+
+    import json
+    import os
+    import sys
+    import traceback
+    import urllib.parse
+
+    import requests
+    import yaml
+
+    NS = os.getenv("RECON_NAMESPACE", "openmetadata")
+    ANALYTICS_NS = os.getenv("RECON_ANALYTICS_NS", "analytics")
+    CLUSTER_DOMAIN = os.getenv("RECON_CLUSTER_DOMAIN", "cluster.local")
+    OWNER_DEFAULT = os.getenv("RECON_OWNER", "data-platform")
+    SOURCES_SERVICE = os.getenv("RECON_SOURCES_SERVICE", "gh_archive")
+    GENERATOR_SERVICE = os.getenv("RECON_GENERATOR_SERVICE", "lakehouse-generators")
+
+    FAILURES = []
+    REPORT = {"connectors": 0, "ingestions": 0, "pipelines": 0, "edges": 0,
+              "entities": 0, "domains": 0, "tags": 0, "skipped": 0}
+
+
+    def q(fqn):
+        """URL-encode an FQN as an OM API path segment."""
+        return urllib.parse.quote(fqn, safe="")
+
+
+    def fail(message):
+        print(f"❌ catalog-sync: {message}", file=sys.stderr, flush=True)
+        FAILURES.append(message)
+
+
+    def note(message):
+        print(f"⚠ catalog-sync: {message}", file=sys.stderr, flush=True)
+        REPORT["skipped"] += 1
+
+
+    class OM:
+        """Minimal OpenMetadata REST client (bot JWT authorization)."""
+
+        def __init__(self, host, token):
+            self.base = host.rstrip("/")
+            self.session = requests.Session()
+            self.session.headers.update(
+                {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+            )
+
+        def call(self, method, path, body=None, extra_headers=None):
+            try:
+                resp = self.session.request(
+                    method, self.base + path,
+                    data=json.dumps(body) if body is not None else None,
+                    headers=extra_headers or {}, timeout=60,
+                )
+            except requests.RequestException as exc:
+                fail(f"{method} {path}: request error: {exc}")
+                return None
+            if resp.status_code not in (200, 201):
+                fail(f"{method} {path}: HTTP {resp.status_code} {resp.text[:300]}")
+                return None
+            try:
+                return resp.json()
+            except ValueError:
+                return {}
+
+        def get(self, path):
+            return self.call("GET", path)
+
+        def put(self, path, body):
+            return self.call("PUT", path, body)
+
+        def patch(self, path, ops):
+            return self.call("PATCH", path, body=ops,
+                             extra_headers={"Content-Type": "application/json-patch+json"})
+
+
+    class K8s:
+        """In-cluster API access bound to the catalog-sync ServiceAccount."""
+
+        def __init__(self):
+            base = "/var/run/secrets/kubernetes.io/serviceaccount"
+            with open(f"{base}/token") as fh:
+                token = fh.read().strip()
+            self.server = "https://" + os.environ["KUBERNETES_SERVICE_HOST"] + ":" + str(
+                os.environ.get("KUBERNETES_SERVICE_PORT", "443"))
+            self.session = requests.Session()
+            self.session.verify = f"{base}/ca.crt"
+            self.session.headers["Authorization"] = "Bearer " + token
+
+        def get(self, path, params=None):
+            try:
+                resp = self.session.get(self.server + path, params=params, timeout=30)
+            except requests.RequestException as exc:
+                fail(f"k8s GET {path}: {exc}")
+                return None
+            if resp.status_code != 200:
+                fail(f"k8s GET {path}: HTTP {resp.status_code}")
+                return None
+            return resp.json()
+
+        def list(self, resource, namespace):
+            return self.get(f"/api/v1/namespaces/{namespace}/{resource}")
+
+        def secret(self, name, namespace, key):
+            import base64
+            doc = self.get(f"/api/v1/namespaces/{namespace}/secrets/{name}")
+            if not doc:
+                return None
+            raw = (doc.get("data") or {}).get(key)
+            if raw is None:
+                return None
+            try:
+                return base64.b64decode(raw).decode("utf-8").strip()
+            except Exception as exc:  # noqa: BLE001
+                fail(f"secret/{namespace}/{name}:{key} unreadable: {exc}")
+                return None
+
+
+    def iceberg_tables(rest_uri, warehouse, region, access_key, secret_key):
+        """{namespace: [tables]} signed with S3SigV4Auth (RustFS rejects
+        unsigned requests — the same signing rules as the sigprobe action)."""
+        import base64
+        import urllib3
+        from botocore.auth import S3SigV4Auth
+        from botocore.awsrequest import AWSRequest
+        from botocore.credentials import Credentials
+
+        creds = Credentials(access_key, secret_key)
+
+        def get(path):
+            url = rest_uri + path
+            req = AWSRequest(method="GET", url=url,
+                             headers={"Accept": "application/json"}, data=b"")
+            S3SigV4Auth(creds, "s3", region).add_auth(req)
+            headers = {k.lower(): v for k, v in req.headers.items()}
+            pool = urllib3.PoolManager()
+            try:
+                resp = pool.request("GET", url, headers=headers, timeout=30)
+            except Exception as exc:  # noqa: BLE001
+                fail(f"iceberg listing {path}: {exc}")
+                return None
+            if resp.status != 200:
+                note(f"iceberg listing {path}: HTTP {resp.status}")
+                return None
+            return json.loads(resp.data.decode("utf-8"))
+
+        found = {}
+        ns_resp = get(f"/v1/{warehouse}/namespaces")
+        if ns_resp is None:
+            return found
+        for ns in ns_resp.get("namespaces", []):
+            name = ns[0] if isinstance(ns, list) else ns
+            t_resp = get(f"/v1/{warehouse}/namespaces/{name}/tables")
+            found[name] = [
+                (".".join(i["namespace"]) if isinstance(i.get("namespace"), list)
+                 else i.get("namespace", name)) + "." + i["name"]
+                for i in (t_resp or {}).get("identifiers", [])
+            ]
+        return found
+
+
+    def load_contracts(k8s):
+        """Parse ConfigMaps labeled catalog.io/contract=v1 in this namespace."""
+        contracts = []
+        cms = k8s.list("configmaps", NS) or {}
+        for item in cms.get("items", []):
+            labels = ((item.get("metadata") or {}).get("labels") or {})
+            if labels.get("catalog.io/contract") != "v1":
+                continue
+            for key in sorted(item.get("data") or {}):
+                if not key.endswith(".yaml"):
+                    continue
+                try:
+                    doc = yaml.safe_load(item["data"][key])
+                except yaml.YAMLError as exc:
+                    fail(f"contract ConfigMap/{item['metadata']['name']}/{key}: invalid YAML: {exc}")
+                    continue
+                kind = (doc or {}).get("kind")
+                if kind in ("ConnectorRegistry", "LineageContract"):
+                    contracts.append(doc)
+                else:
+                    note(f"contract {item['metadata']['name']}/{key}: unsupported kind {kind!r}")
+        return contracts
+
+
+    def labeled_connectors(k8s):
+        """FAST path: Services annotated catalog.io/connector=<type>.
+
+        The annotation alone onboards a queryable source: connection host/port
+        come from the live Service, credentials from `catalog.io/secret`,
+        database from `catalog.io/database`.
+        """
+        found = []
+        seen_ns = [NS, ANALYTICS_NS]
+        for ns in seen_ns:
+            res = k8s.list("services", ns) or {}
+            for item in res.get("items", []):
+                ann = (item.get("metadata") or {}).get("annotations") or {}
+                ctype = ann.get("catalog.io/connector")
+                if not ctype:
+                    continue
+                name = item["metadata"]["name"]
+                ports = (item.get("spec") or {}).get("ports") or []
+                port = next((p["port"] for p in ports
+                             if p.get("name") == ctype or p.get("name") == "postgres"),
+                            ports[0]["port"] if ports else None)
+                found.append({
+                    "name": name,
+                    "serviceType": ctype,
+                    "description": ann.get("catalog.io/description") or
+                        f"Queryable service discovered via catalog.io/connector on Service/{ns}/{name}.",
+                    "owner": ann.get("catalog.io/owner") or OWNER_DEFAULT,
+                    "tags": ["Tier.Tier1"],
+                    "domains": [],
+                    "discovery": {"service": name, "namespace": ns, "portName": ctype},
+                    "credentials": {
+                        "secretRef": ann.get("catalog.io/secret"),
+                        "usernameKey": "username", "passwordKey": "password"},
+                    "connection": {"databaseName": ann.get("catalog.io/database") or ""},
+                })
+        return found
+
+
+    def labeled_pipelines(k8s):
+        """FAST path: Deployments/CronJobs annotated catalog.io/produces."""
+        found = []
+        for ns in [NS, ANALYTICS_NS]:
+            for kind, path in (("deployment", "deployments"), ("cronjob", "cronjobs")):
+                res = k8s.list(path, ns) or {}
+                for item in res.get("items", []):
+                    ann = (item.get("metadata") or {}).get("annotations") or {}
+                    produces = ann.get("catalog.io/produces")
+                    if not produces:
+                        continue
+                    name = item["metadata"]["name"]
+                    found.append({
+                        "kind": "LineageContract",
+                        "spec": {
+                            "pipeline": {
+                                "name": name,
+                                "service": GENERATOR_SERVICE,
+                                "k8sWorkload": f"{ns}/{kind}/{name}",
+                                "displayName": name,
+                                "description": ann.get("catalog.io/description") or
+                                    f"Producer discovered via catalog.io/produces on {kind}/{ns}/{name}.",
+                            },
+                            "owner": ann.get("catalog.io/owner") or OWNER_DEFAULT,
+                            "tags": ["Tier.Tier1"],
+                            "sources": [],
+                            "outputs": [{"table": t.strip()}
+                                        for t in produces.split(",") if t.strip()],
+                        }})
+        return found
+
+
+    def merge_by_pipeline(pipeline_specs):
+        """Contract + label entries for the same pipeline merge (contract wins)."""
+        seen, out = {}, []
+        for spec in pipeline_specs:
+            inner = spec.get("spec") or spec
+            name = (inner.get("pipeline") or {}).get("name")
+            if not name:
+                note("pipeline spec without pipeline.name — skipped")
+                continue
+            if name in seen:
+                old = seen[name]
+                old_spec = old.get("spec")
+                for key in ("sources", "outputs", "tags", "owner"):
+                    if inner.get(key) and not (old_spec or {}).get(key):
+                        old_spec[key] = inner[key]
+                continue
+            seen[name] = spec
+            out.append(spec)
+        return out
+
+
+    def live_service(k8s, disc):
+        """Resolve discovery to (host, port) from the live Service."""
+        svc_name = (disc or {}).get("service")
+        svc_ns = (disc or {}).get("namespace", ANALYTICS_NS)
+        svc = k8s.get(f"/api/v1/namespaces/{svc_ns}/services/{svc_name}")
+        if not svc:
+            note(f"Service/{svc_ns}/{svc_name} not found — connector skipped")
+            return None
+        ports = (svc.get("spec") or {}).get("ports") or []
+        port = next((p["port"] for p in ports if p.get("name") == (disc or {}).get("portName")), None)
+        if port is None and ports:
+            port = ports[0]["port"]
+        if port is None:
+            fail(f"Service/{svc_ns}/{svc_name} exposes no port")
+            return None
+        return {"host": f"{svc_name}.{svc_ns}.svc.{CLUSTER_DOMAIN}", "port": port}
+
+
+    CONN_TYPES = {"postgres": "Postgres", "mysql": "Mysql", "trino": "Trino",
+                  "clickhouse": "Clickhouse", "databricks": "Databricks",
+                  "athena": "Athena", "snowflake": "Snowflake",
+                  "glue": "Glue", "bigquery": "BigQuery", "mssql": "Mssql"}
+
+
+    def upsert_database_service(om, entry, live, user, password):
+        """Plane A — one OM databaseService from a contract or label entry.
+
+        GET-first: an unchanged service is left untouched (idempotent no-op);
+        a drifted host/port/database is re-PUT with owners preserved."""
+        name = entry["name"]
+        conn = {
+            "type": CONN_TYPES.get(entry.get("serviceType", "postgres"), "Postgres"),
+            "hostPort": f"{live['host']}:{live['port']}",
+            "username": user,
+            "password": password,
+            "databaseName": (entry.get("connection") or {}).get("databaseName") or "",
+            "supportsMetadataExtraction": True,
+            "supportsUsageExtraction": False,
+            "supportsProfiler": True,
+            "supportsDatabase": True,
+            "supportsLineage": True,
+            "supportsDataDiff": False,
+        }
+        team = ensure_team(om, entry.get("owner") or OWNER_DEFAULT)
+        existing = om.find(f"/api/v1/services/databaseServices/name/{q(name)}")
+        if existing and existing.get("id"):
+            current = ((existing.get("connection") or {}).get("config") or {})
+            drifted = (current.get("hostPort") != conn["hostPort"]
+                       or current.get("databaseName") != conn["databaseName"])
+            if not drifted:
+                return existing["id"]      # converged — nothing to do
+            merged = dict(existing)
+            merged["connection"] = {"config": conn}
+            put = om.put("/api/v1/services/databaseServices", merged)
+            if put:
+                print(f"  ~ databaseService {name} re-pointed -> {conn['hostPort']}", flush=True)
+            return (put or existing).get("id")
+        put = om.put("/api/v1/services/databaseServices", {
+            "name": name,
+            "serviceType": entry.get("serviceType", "postgres"),
+            "description": entry.get("description") or "",
+            "owners": owner_block(team),
+            "connection": {"config": conn},
+        })
+        if not put:
+            return None
+        REPORT["connectors"] += 1
+        print(f"  + databaseService {name} ({live['host']}:{live['port']})", flush=True)
+        for tag in entry.get("tags") or []:
+            add_tag(om, "databaseServices", name, tag)
+        for dom in entry.get("domains") or []:
+            dom_id = ensure_domain(om, dom)
+            if dom_id:
+                om.patch(f"/api/v1/services/databaseServices/name/{q(name)}",
+                         [{"op": "add", "path": "/domains", "value": [dom_id]}])
+        return put.get("id")
+
+
+    def ensure_team(om, name):
+        if not name:
+            return None
+        team = om.find(f"/api/v1/teams/name/{q(name)}")
+        if team and team.get("id"):
+            return team["id"]
+        om.put("/api/v1/teams", {"name": name, "displayName": name,
+                                 "teamType": "group",
+                                 "description": "Auto-created by catalog-sync."})
+        team = om.find(f"/api/v1/teams/name/{q(name)}")
+        if team and team.get("id"):
+            REPORT["entities"] += 1
+            print(f"  + team {name}", flush=True)
+            return team["id"]
+        return None
+
+
+    def ensure_domain(om, name):
+        dom = om.find(f"/api/v1/domains/name/{q(name)}")
+        if dom and dom.get("id"):
+            return dom["id"]
+        om.put("/api/v1/domains", {
+            "name": name, "displayName": name.capitalize(),
+            "description": f"Iceberg namespace '{name}' — auto-created by catalog-sync."})
+        dom = om.find(f"/api/v1/domains/name/{q(name)}")
+        if dom and dom.get("id"):
+            REPORT["domains"] += 1
+            print(f"  + domain {name}", flush=True)
+            return dom["id"]
+        return None
+
+
+    def owner_block(team_id):
+        return [{"id": team_id, "type": "team"}] if team_id else []
+
+
+    def add_tag(om, entity_type, fqn, tag_fqn):
+        if not fqn:
+            return
+        path = f"/api/v1/{entity_type}/name/{q(fqn)}"
+        entity = om.find(path)
+        if not entity or tag_fqn in [t.get("tagFQN") for t in (entity.get("tags") or [])]:
+            return
+        om.patch(path, [{"op": "add", "path": "/tags/-",
+                         "value": {"tagFQN": tag_fqn, "labelType": "Manual",
+                                   "state": "Confirmed", "source": "Classification"}}])
+        REPORT["tags"] += 1
+
+
+    def upsert_ingestion(om, svc_name, svc_id, pipeline_type, schedule):
+        """Scheduled ingestion pipeline on a database service (k8s Jobs)."""
+        if not schedule:
+            return
+        name = f"{svc_name}.{pipeline_type}"
+        existing = om.find(f"/api/v1/services/ingestionPipelines/name/{q(name)}")
+        body = {
+            "name": name,
+            "displayName": f"{svc_name} {pipeline_type}",
+            "pipelineType": pipeline_type,
+            "service": {"type": "databaseService", "id": svc_id},
+            "sourceConfig": {"config": {"type": {"metadata": "DatabaseMetadata",
+                                                 "profiler": "Profiler",
+                                                 "usage": "DatabaseUsage"}[pipeline_type]}},
+            "scheduleInterval": schedule,
+            "deployed": True,
+        }
+        if not (existing and existing.get("id")):
+            if om.put("/api/v1/services/ingestionPipelines", body):
+                REPORT["ingestions"] += 1
+                print(f"  + ingestion {name} @ {schedule}", flush=True)
+            return
+        current = (existing.get("schedule") or {}).get("scheduleInterval")
+        if current and current != schedule:
+            merged = dict(existing)
+            merged["scheduleInterval"] = schedule
+            om.put(f"/api/v1/services/ingestionPipelines/{existing['id']}", merged)
+            print(f"  ~ ingestion {name} rescheduled -> {schedule}", flush=True)
+
+
+    def ensure_sources(om, sources):
+        """External upstreams as placeholder tables under one custom service.
+
+        FQN convention: <SOURCES_SERVICE>.internet.sources.<name> — sources
+        are referenced by NAME from contracts/labels (sourceFqn: gh-archive).
+        """
+        refs = {}
+        if not sources:
+            return refs
+        team = ensure_team(om, OWNER_DEFAULT)
+        svc = om.find(f"/api/v1/services/databaseServices/name/{q(SOURCES_SERVICE)}")
+        if not (svc and svc.get("id")):
+            svc = om.put("/api/v1/services/databaseServices", {
+                "name": SOURCES_SERVICE,
+                "serviceType": "customDatabase",
+                "description": "External internet sources feeding the datalake — "
+                               "placeholder tables so lineage reads end-to-end.",
+                "owners": owner_block(team),
+                "connection": {"config": {"type": "CustomDatabase",
+                                          "sourceType": "External"}},
+            }) or {}
+            if svc.get("id"):
+                REPORT["connectors"] += 1
+                print(f"  + databaseService {SOURCES_SERVICE} (external sources)", flush=True)
+        svc_id = svc.get("id")
+        for src in sources:
+            name = src.get("name")
+            if not name or name in refs and refs[name].get("id"):
+                continue
+            database, schema, table = "internet", "sources", name
+            db_fqn = f"{SOURCES_SERVICE}.{database}"
+            db = om.find(f"/api/v1/databases/name/{q(db_fqn)}")
+            if not (db and db.get("id")):
+                db = om.put("/api/v1/databases", {
+                    "name": database, "service": {"id": svc_id, "type": "databaseService"},
+                    "description": "External source namespace (catalog-sync-owned).",
+                }) or {}
+                if db.get("id"):
+                    REPORT["entities"] += 1
+            sch_fqn = f"{db_fqn}.{schema}"
+            sch = om.find(f"/api/v1/databaseSchemas/name/{q(sch_fqn)}")
+            if not (sch and sch.get("id")):
+                om.put("/api/v1/databaseSchemas", {
+                    "name": schema,
+                    "database": {"id": db.get("id"), "type": "database"},
+                    "description": "External upstream schemas."})
+                sch = om.find(f"/api/v1/databaseSchemas/name/{q(sch_fqn)}")
+            if not (sch and sch.get("id")):
+                note(f"external schema {sch_fqn} not ensured")
+                continue
+            t_fqn = f"{sch_fqn}.{table}"
+            tbl = om.find(f"/api/v1/tables/name/{q(t_fqn)}")
+            if not (tbl and tbl.get("id")):
+                om.put("/api/v1/tables", {
+                    "name": table,
+                    "databaseSchema": {"id": sch["id"], "type": "databaseSchema"},
+                    "columns": [{"name": c, "dataType": "STRING",
+                                 "description": f"Raw upstream field '{c}'"}
+                                for c in (src.get("columns") or ["source_data"])],
+                    "description": src.get("description") or "",
+                    "owners": owner_block(team),
+                })
+                tbl = om.find(f"/api/v1/tables/name/{q(t_fqn)}")
+                if tbl and tbl.get("id"):
+                    REPORT["entities"] += 1
+                    print(f"  + external source {t_fqn}", flush=True)
+            if tbl and tbl.get("id"):
+                refs[name] = {"id": tbl["id"], "fqn": t_fqn}
+        return refs
+
+
+    def ensure_pipeline(om, spec):
+        """Plane B — pipelineService/pipeline entity for one producer."""
+        inner = spec.get("spec") or spec
+        p = inner["pipeline"]
+        svc_name = p.get("service") or GENERATOR_SERVICE
+        team = ensure_team(om, inner.get("owner") or OWNER_DEFAULT)
+        psvc = om.find(f"/api/v1/services/pipelineServices/name/{q(svc_name)}")
+        if not (psvc and psvc.get("id")):
+            psvc = om.put("/api/v1/services/pipelineServices", {
+                "name": svc_name,
+                "serviceType": "customPipeline",
+                "description": "Datalake producers registered from the cluster "
+                               "(catalog.io labels / lineage contracts).",
+                "owners": owner_block(team),
+                "connection": {"config": {"type": "CustomPipeline",
+                                          "sourceType": "k8s"}},
+            }) or {}
+            if psvc.get("id"):
+                REPORT["entities"] += 1
+                print(f"  + pipelineService {svc_name}", flush=True)
+        pl_fqn = f"{svc_name}.{p['name']}"
+        pl = om.find(f"/api/v1/pipelines/name/{q(pl_fqn)}")
+        if not (pl and pl.get("id")):
+            pl = om.put("/api/v1/pipelines", {
+                "name": p["name"],
+                "displayName": p.get("displayName") or p["name"],
+                "description": p.get("description") or "",
+                "service": {"id": psvc.get("id"), "type": "pipelineService"},
+                "owners": owner_block(team),
+            }) or {}
+            if pl.get("id"):
+                REPORT["pipelines"] += 1
+                print(f"  + pipeline {pl_fqn}", flush=True)
+        if pl.get("id") and p.get("k8sWorkload"):
+            om.patch(f"/api/v1/pipelines/{pl['id']}", [{"op": "add",
+                     "path": "/extension/k8sWorkload", "value": p["k8sWorkload"]}])
+        for tag in inner.get("tags") or []:
+            add_tag(om, "pipelines", pl_fqn, tag)
+        if not pl.get("id"):
+            return None
+        return {"id": pl["id"], "fqn": pl_fqn}
+
+
+    def rebase_output(output, defaults, warehouse="datalake"):
+        """Output table name -> full table FQN.
+
+        Accepted shapes:
+          <schema>.<table>                -> <svc>.<db>.<schema>.<table>
+          <warehouse>.<schema>.<table>    -> lake-qualified; warehouse stripped
+          <svc>.<db>.<schema>.<table>+    -> as-is
+        """
+        table = output["table"]
+        parts = table.split(".")
+        if len(parts) >= 4:
+            return table
+        svc = defaults.get("fqnService") or ""
+        dbn = defaults.get("fqnDatabase") or ""
+        if len(parts) == 3 and parts[0] == warehouse:
+            parts = parts[1:]           # lake-qualified: strip the warehouse
+        if len(parts) == 2:
+            return f"{svc}.{dbn}.{parts[0]}.{parts[1]}"
+        return f"{svc}.{dbn}.{table}"
+
+
+    def add_edge(om, from_type, from_ref, to_type, to_ref, pipeline=None, columns=None):
+        """One lineage edge, GET-before-PUT (idempotent — no duplicate edges).
+
+        OM serves lineage per entity: GET /api/v1/lineage/{to_type}/name/{fqn}
+        ?upstreamDepth=1 returns upstreamEdges; an edge with the same
+        fromEntity id already exists -> nothing to do."""
+        edge_get_type = to_type if to_type in ("table", "pipeline") else None
+        if edge_get_type:
+            doc = om.get(f"/api/v1/lineage/{edge_get_type}/name/"
+                         f"{q(to_ref['fqn'])}?upstreamDepth=1")
+            for e in ((doc or {}).get("upstreamEdges") or []):
+                if (e.get("fromEntity") or {}).get("id") == from_ref["id"]:
+                    return          # already wired
+        edge = {"fromEntity": {"id": from_ref["id"], "type": from_type},
+                "toEntity": {"id": to_ref["id"], "type": to_type}}
+        if pipeline and pipeline.get("id"):
+            edge["lineageDetails"] = {
+                "pipeline": {"id": pipeline["id"], "type": "pipeline"},
+                "columnsLineage": [
+                    {"fromColumns": [fc], "toColumn": tc}
+                    for fc, tc in (columns or {}).items()
+                ] or [],
+            }
+        if om.put("/api/v1/lineage", {"edge": edge}):
+            REPORT["edges"] += 1
+            print(f"  + lineage {from_type} {from_ref.get('fqn', from_ref['id'])}"
+                  f" -> {to_type} {to_ref.get('fqn', to_ref['id'])}", flush=True)
+
+
+    def main():
+        required = ["OM_HOST", "OM_BOT_TOKEN", "RUSTFS_PROTOCOL",
+                    "RUSTFS_ENDPOINT_HOST", "RUSTFS_ENDPOINT_PORT",
+                    "RUSTFS_REGION", "RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY"]
+        missing = [r for r in required if not os.getenv(r)]
+        if missing:
+            fail("missing env vars: " + ", ".join(missing))
+            return 3
+        print("▶ catalog-sync starting", flush=True)
+
+        om = OM(os.getenv("OM_HOST"), os.getenv("OM_BOT_TOKEN"))
+        if om.get("/api/v1/system/config/jwks") is None:
+            fail(f"OpenMetadata unreachable at {os.getenv('OM_HOST')}")
+            return 3
+
+        k8s = K8s()
+
+        # ── inventory: contracts + cluster labels ─────────────────────────
+        contracts = load_contracts(k8s)
+        registries = [c for c in contracts if c.get("kind") == "ConnectorRegistry"]
+        connectors = [e for reg in registries
+                      for e in ((reg.get("spec") or {}).get("connectors") or [])]
+        # FAST path: cluster labels onboard services/workloads with no
+        # contract file. Contract entries win on name collisions (rich form
+        # overrides labels); labels add everything contracts don't mention.
+        labeled = labeled_connectors(k8s)
+        known = {e["name"] for e in connectors}
+        connectors += [e for e in labeled if e["name"] not in known]
+        pipeline_specs = merge_by_pipeline(
+            [c for c in contracts if c.get("kind") == "LineageContract"]
+            + labeled_pipelines(k8s))
+        defaults = next((((r.get("spec") or {}).get("defaults") or {})
+                         for r in registries if (r.get("spec") or {}).get("defaults")),
+                        {})
+        print(f"▸ contracts: {len(connectors)} connector(s), "
+              f"{len(pipeline_specs)} producer(s)", flush=True)
+
+        # ── Plane A — queryable sources ──────────────────────────────────
+        for entry in connectors:
+            creds = entry.get("credentials") or {}
+            if creds.get("secretRef"):
+                svc_probe = k8s.get(
+                    f"/api/v1/namespaces/{NS}/secrets/{creds['secretRef']}")
+                secret_ns = NS if svc_probe else ANALYTICS_NS
+                user = k8s.secret(creds["secretRef"], secret_ns,
+                                  creds.get("usernameKey", "username")) or ""
+                password = k8s.secret(creds["secretRef"], secret_ns,
+                                      creds.get("passwordKey", "password")) or ""
+            else:
+                user = password = ""
+            live = live_service(k8s, entry.get("discovery") or {"service": entry["name"]})
+            if not live:
+                note(f"connector '{entry['name']}' has no live Service — skipped")
+                continue
+            svc_id = upsert_database_service(om, entry, live, user, password)
+            if not svc_id:
+                continue
+            ing = entry.get("ingestion") or {}
+            upsert_ingestion(om, entry["name"], svc_id,
+                             "metadata", (ing.get("metadata") or {}).get("schedule"))
+            upsert_ingestion(om, entry["name"], svc_id,
+                             "profiler", (ing.get("profiler") or {}).get("schedule"))
+            upsert_ingestion(om, entry["name"], svc_id,
+                             "usage", (ing.get("usage") or {}).get("schedule"))
+
+        # ── lake inventory drives Domain creation ────────────────────────
+        rest_uri = (f"{os.getenv('RUSTFS_PROTOCOL')}://"
+                    f"{os.getenv('RUSTFS_ENDPOINT_HOST')}:{os.getenv('RUSTFS_ENDPOINT_PORT')}/iceberg")
+        tables = iceberg_tables(rest_uri, os.getenv("RECON_WAREHOUSE", "datalake"),
+                                os.getenv("RUSTFS_REGION"),
+                                os.getenv("RUSTFS_ACCESS_KEY"),
+                                os.getenv("RUSTFS_SECRET_KEY"))
+        for ns_name in sorted(tables.keys()):
+            ensure_domain(om, ns_name)
+        print(f"▸ iceberg: {sum(len(v) for v in tables.values())} tables in "
+              f"{len(tables)} namespace(s)", flush=True)
+
+        # ── Plane B — producers + lineage ─────────────────────────────────
+        sources = [s for spec in pipeline_specs
+                   for s in ((spec.get("spec") or spec).get("sources") or [])]
+        ext = ensure_sources(om, sources)
+        for spec in pipeline_specs:
+            inner = spec.get("spec") or spec
+            pipeline = ensure_pipeline(om, spec)
+            if not pipeline:
+                continue
+            # sources -> pipeline (edges keyed by source NAME)
+            for src in inner.get("sources") or []:
+                ref = ext.get(src.get("name"))
+                if not ref:
+                    note(f"source {src.get('name')} not ensured — edge deferred")
+                    continue
+                add_edge(om, "table", ref, "pipeline", pipeline, pipeline=pipeline)
+            # pipeline -> outputs (+ column lineage pinned by FQN)
+            for out in inner.get("outputs") or []:
+                full = rebase_output(out, defaults)
+                target = om.find(f"/api/v1/tables/name/{q(full)}")
+                if not (target and target.get("id")):
+                    note(f"output {full} not in the catalog yet — edge deferred")
+                    continue
+                col_map = out.get("columnLineage") or {}
+                src_name = out.get("sourceFqn") or ((inner.get("sources") or [{}])[0].get("name"))
+                src_ref = ext.get(src_name)
+                columns = {
+                    f"{full}.{to_col}": f"{src_ref['fqn']}.{from_col}"
+                    for to_col, from_col in col_map.items()
+                } if (src_ref and col_map) else {}
+                add_edge(om, "pipeline", pipeline, "table",
+                         {"id": target["id"], "fqn": full},
+                         pipeline=pipeline, columns=columns)
+
+        print(f"✅ catalog-sync converged — report {json.dumps(REPORT, sort_keys=True)}", flush=True)
+        if FAILURES:
+            for f in FAILURES[:20]:
+                print("   ✗ " + f, file=sys.stderr, flush=True)
+            return 3
+        return 0
+
+
+    if __name__ == "__main__":
+        try:
+            sys.exit(main())
+        except SystemExit:
+            raise
+        except Exception:  # noqa: BLE001 — a traceback beats silence in CI logs
+            traceback.print_exc()
+            sys.exit(3)
+  RECON_NAMESPACE: "openmetadata"
+  RECON_ANALYTICS_NS: "analytics"
+  RECON_CLUSTER_DOMAIN: "cluster.local"
+  RECON_OWNER: "data-platform"
+  RECON_SOURCES_SERVICE: "gh_archive"
+  RECON_GENERATOR_SERVICE: "lakehouse-generators"
+  RECON_WAREHOUSE: "datalake"

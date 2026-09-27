@@ -6,6 +6,12 @@ metadata:
   labels:
     app.kubernetes.io/name: generator-stream
     app.kubernetes.io/component: generator
+  annotations:
+    # catalog-sync plane B: producer registration (pipeline entity +
+    # lineage edges). Rich form (column-level maps + sources) lives in
+    # openmetadata/sync/contracts/generator-stream.yaml.
+    catalog.io/produces: datalake.events.wikipedia_edits,datalake.events.bluesky_posts
+    catalog.io/owner: data-platform
 spec:
   # Exactly one replica: two replicas would double-ingest the firehoses.
   replicas: 1

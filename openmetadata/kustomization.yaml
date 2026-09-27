@@ -1,0 +1,35 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - sync/
+
+helmCharts:
+  # Both charts come from the official OpenMetadata helm repo. The deps
+  # release tarball vendors its subcharts (mysql 14.0.2, opensearch 3.3.2),
+  # so only the OM chart repo must be reachable at build time — no
+  # bitnami/opensearch repo fetches.
+  # NB: kustomize sorts the final output by kind, so chart order here does
+  # NOT control apply order — on a fresh install the server crash-loops
+  # until mysql/opensearch are ready and self-heals (same known pattern as
+  # duckdb ↔ rustfs in the README); the server's own init containers retry.
+  #
+  # We keep ONLY OpenSearch from the deps chart: mysql/airflow/fuseki are
+  # disabled in deps-values.yaml (airflow is fully replaced by OM's native
+  # k8s ingestion; mysql is SUPERSEDED below — see deps-values.yaml note).
+  - name: openmetadata-dependencies
+    repo: https://open-metadata.github.io/openmetadata-helm-charts
+    version: 2.0.2
+    releaseName: openmetadata
+    namespace: openmetadata
+    valuesFile: deps-values.yaml
+    skipTests: true
+
+  - name: openmetadata
+    repo: https://open-metadata.github.io/openmetadata-helm-charts
+    version: 2.0.2
+    releaseName: openmetadata
+    namespace: openmetadata
+    valuesFile: values.yaml
+    skipTests: true

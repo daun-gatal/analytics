@@ -1,0 +1,20 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: catalog-sync-settings
+  namespace: openmetadata
+data:
+  #
+  # RustFS REST catalog facts for the catalog-sync CronJob.
+  #
+  # These mirror duckdb-settings (ns analytics) but are written here
+  # statically and RECONCILED by scripts/sync-duckdb-rustfs.sh's sibling
+  # logic: the CI apply step always runs the sync script, and the
+  # reconciler additionally re-derives host/port from the LIVE
+  # Service/rustfs-svc — a drifted value here is fixed on the next run.
+  #
+  RUSTFS_PROTOCOL: http
+  RUSTFS_ENDPOINT_HOST: rustfs-svc.rustfs.svc.cluster.local
+  RUSTFS_ENDPOINT_PORT: '9000'
+  RUSTFS_REGION: us-east-1
+  RECON_WAREHOUSE: datalake

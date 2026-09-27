@@ -1,0 +1,77 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: orchestrator-contracts
+  namespace: openmetadata
+  labels:
+    catalog.io/contract: v1
+data:
+  #
+  # Plane A — connector registry. One stanza per queryable service the
+  # catalog should ingest FROM. The reconciler turns each entry into an
+  # OpenMetadata service + scheduled ingestion pipelines.
+  #
+  # The `discovery` block is re-resolved on every run from the live
+  # cluster state (the Service named there), so manifests can't drift
+  # from reality — the same alignment doctrine as
+  # scripts/sync-duckdb-rustfs.sh, applied to the catalog.
+  #
+  # NOTE: this file is the RICH form. The FAST path needs no edit here at
+  # all: putting `catalog.io/connector: postgres` on a Service is enough
+  # for the reconciler to onboard it (host/port from the Service, creds
+  # from `catalog.io/secret`, database from `catalog.io/database`).
+  connectors.yaml: |
+    apiVersion: catalog.analytics.io/v1
+    kind: ConnectorRegistry
+    spec:
+      defaults:
+        # Where table FQNs are rooted when a LineageContract names outputs
+        # as <schema>.<table>: <fqnService>.<fqnDatabase>.<schema>.<table>.
+        # Keeps lineage contracts service/database-name agnostic.
+        fqnService: duckdb
+        fqnDatabase: datalake
+      connectors:
+        - name: duckdb
+          # OpenMetadata service type: DuckFlight speaks the PG wire, so
+          # tables, columns, row counts plus profiler & DQ delegation work.
+          serviceType: postgres
+          description: >-
+            DuckDB over the DuckFlight PostgreSQL wire endpoint — reads the
+            Apache Iceberg tables stored on RustFS (datalake catalog).
+          owner: data-platform
+          tags: [Tier.Tier1]
+          # One OM Domain per iceberg namespace (auto-created) — Groups the
+          # datalake in search.
+          domains: [events, web]
+          discovery:
+            # host = <service>.<namespace>.svc.<cluster-domain>, port from
+            # the port named `portName` — live Service, never hardcoded.
+            service: duckdb
+            namespace: analytics
+            portName: postgres
+          credentials:
+            # reconciler reads ONLY this secret (RBAC scoped by name)
+            secretRef: duckflight-auth
+            usernameKey: username
+            passwordKey: password
+          connection:
+            # DuckFlight presents the attached Iceberg catalog `datalake`
+            # as one PG database. If a future DuckFlight release names
+            # databases differently, this is the single value to change.
+            databaseName: datalake
+          ingestion:
+            metadata:
+              schedule: "0 */2 * * *"   # every 2h — schema + samples + rowcounts
+              configOverrides:
+                includeTables: true
+                includeViews: false
+                markDeletedTables: true   # retire tables dropped from the lake
+                includeTags: true
+                includeOwners: true
+            profiler:
+              schedule: "0 3 * * *"    # daily, after the 02:00 lake maintenance
+              configOverrides:
+                tableFilterPattern:
+                  includes: ["^datalake\\..*"]
+            usage:
+              enabled: false           # enabled when a query-log table exists

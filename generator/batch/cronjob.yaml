@@ -6,6 +6,12 @@ metadata:
   labels:
     app.kubernetes.io/name: generator-batch
     app.kubernetes.io/component: generator
+  annotations:
+    # catalog-sync plane B: producer registration (pipeline entity +
+    # lineage edges). Rich form (column-level maps + sources) lives in
+    # openmetadata/sync/contracts/generator-batch.yaml.
+    catalog.io/produces: datalake.web.github_events,datalake.web.wikimedia_pageviews
+    catalog.io/owner: data-platform
 spec:
   # Hourly at :15 — safely after the previous hour closes on both sources.
   # UTC clock; pageview dump lag (~2-4h) is handled by in-script backtracking.

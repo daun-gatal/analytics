@@ -1,0 +1,66 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: lineage-contract-generator-batch
+  namespace: openmetadata
+  labels:
+    catalog.io/contract: v1
+data:
+  #
+  # Plane B — lineage contract for CronJob/generator-batch.
+  #
+  # Column maps mirror batch.py exactly:
+  #   github_events        <- GH Archive `{type,created_at,actor.login,repo.name,payload}`
+  #   wikimedia_pageviews  <- pageviews dump `domain title count` (+ candidate hour)
+  # Sources are modeled as placeholder tables under the external source
+  # service so the lineage graph is readable end-to-end (internet source
+  # -> pipeline -> lake table) and the URIs survive in the descriptions.
+  generator-batch.yaml: |
+    apiVersion: catalog.analytics.io/v1
+    kind: LineageContract
+    spec:
+      pipeline:
+        name: generator-batch
+        service: lakehouse-generators
+        # provenance — the actual k8s workload that produces the data
+        k8sWorkload: analytics/cronjob/generator-batch
+        displayName: generator-batch
+        description: >-
+          Hourly CronJob (UTC :15) ingesting public dump files into the
+          Iceberg lake: GH Archive -> web.github_events, Wikimedia pageviews
+          -> web.wikimedia_pageviews. Overwrite-by-hour semantics.
+      owner: data-platform
+      tags: [Tier.Tier1]
+      # external upstreams (modeled as tables under the sources service)
+      # columns mirror the raw dump fields each row is derived from.
+      sources:
+        - name: gh-archive
+          description: >-
+            Public GitHub event archive, one gzipped JSONL file per hour.
+            https://data.gharchive.org/{YYYY-MM-DD-H}.json.gz
+          columns: [event_type, created_at, actor, repo, payload]
+        - name: wikimedia-pageviews
+          fqn: gh_archive.hourly.wikimedia_pageviews
+          description: >-
+            Wikimedia hourly pageview dumps (published with ~2-4h lag).
+            https://dumps.wikimedia.org/other/pageviews/{YYYY}/{YYYY-MM}/pageviews-{YYYYMMDD}-{HH}0000.gz
+          columns: [domain, title, count]
+      outputs:
+        - # <schema>.<table> — rebased onto the fqnService/fqnDatabase pair
+          # from connectors.yaml defaults (-> duckdb.datalake.web.*)
+          table: web.github_events
+          # which upstream this output's columnLineage maps from
+          sourceFqn: gh-archive
+          columnLineage:
+            event_type: event_type        # <- gh_archive.hourly.github_events.event_type
+            event_ts: created_at          # from created_at (ISO) -> timestamptz
+            actor_login: actor            # payload-nested actor.login
+            repo_name: repo               # repo.name
+            action: payload
+            push_size: payload
+        - table: web.wikimedia_pageviews
+          sourceFqn: wikimedia-pageviews
+          columnLineage:
+            project: domain
+            page_title: title
+            views: count

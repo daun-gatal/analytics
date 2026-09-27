@@ -123,6 +123,7 @@ flowchart TD
 | Credentials | Single GitHub Secret pair, stamped by CI into both namespaces |
 | Iceberg maintenance | CronJob `iceberg-maintenance-daily` in `analytics` at 02:00 (compact → manifests → expire snapshots → orphan cleanup) · Spark local mode · image `ghcr.io/daun-gatal/analytics/iceberg-maintenance` (public, built by CI) |
 | Data generator | `Deployment/generator-stream` (always-on: Wikimedia EventStreams SSE + Bluesky Jetstream WS → `datalake.events.*`, 60s/100-row buffered appends) + `CronJob/generator-batch` hourly at :15 (GH Archive + Wikimedia pageview dumps → `datalake.web.*`, overwrite-by-hour) · image `ghcr.io/daun-gatal/analytics/generator` (public, built by CI) |
+| Catalog | **OpenMetadata 2.0.2** in ns `openmetadata` — server + OpenSearch 3.3.2 (single node) + MySQL 8 (metadata DB) via the official helm charts; ingestion = **native Kubernetes Jobs** (no Airflow); UI exposed via Tailscale (`openmetadata`); `CronJob/catalog-sync` reconciles connectors/lineage/ownership hourly |
 
 ## Structure
 
@@ -160,8 +161,25 @@ analytics/                     # repo root for manifests (this dir)
 │   │   └── deployment.yaml          # Deployment/generator-stream (1 replica)
 │   └── batch/
 │       └── cronjob.yaml             # CronJob/generator-batch (hourly :15)
+├── openmetadata/                # OpenMetadata catalog (2.0.2, native-k8s ingestion)
+│   ├── kustomization.yaml           # helmCharts: openmetadata + openmetadata-dependencies
+│   ├── namespace.yaml               # Namespace/openmetadata
+│   ├── values.yaml                  # server chart values (k8s ingestion, basic auth)
+│   ├── deps-values.yaml             # OpenSearch only (mysql kept, airflow/fuseki off)
+│   └── sync/                        # the ONE reconciliation engine
+│       ├── kustomization.yaml           # pins the CI-built ghcr.io image
+│       ├── rbac.yaml                    # read-only discovery (analytics/rustfs) + contracts
+│       ├── settings.yaml                # catalog-sync-settings (rustfs REST facts)
+│       ├── configmap.yaml               # catalog-sync.py: declare → reconcile → verify
+│       ├── cronjob.yaml                 # CronJob/catalog-sync (hourly :45)
+│       ├── image/Dockerfile             # python slim + requests + botocore
+│       └── contracts/                   # ← the plug & play surface
+│           ├── connectors.yaml              # Plane A: queryable sources registry
+│           ├── generator-batch.yaml         # Plane B: producer lineage contract
+│           └── generator-stream.yaml        # Plane B: producer lineage contract
 ├── scripts/
-│   └── sync-duckdb-rustfs.sh  # derive duckdb connection facts from deployed rustfs
+│   ├── sync-duckdb-rustfs.sh  # derive duckdb connection facts from deployed rustfs
+│   └── bootstrap-openmetadata.sh  # one-time: admin password + catalog-sync bot
 └── .github/workflows/
     └── deploy.yaml            # module/action dispatcher (dispatch + call)
 ```
@@ -273,6 +291,64 @@ kubectl create job --from=cronjob/generator-batch generator-manual -n analytics
 kubectl logs -f job/generator-manual -n analytics
 ```
 
+## OpenMetadata catalog (what it gives you, and how it stays automatic)
+
+`openmetadata/` deploys the full catalog — server, OpenSearch 3.3.2, MySQL 8 — and
+**automates everything** around it. Ingestion runs as **native Kubernetes Jobs**
+(`pipelineServiceClientConfig.type: "k8s"`) — no Airflow, no CRDs.
+
+Three automated layers:
+
+| Layer | Mechanism | Result |
+|---|---|---|
+| **1. Table & schema discovery** | OM *PostgreSQL* connector → `duckdb.analytics:5433` (DuckFlight's Postgres wire over the attached `datalake` Iceberg catalog); metadata ingestion every 2h + profiler daily 03:00, both scheduled by the server as k8s CronJobs | every lake table + columns + row counts + stats in the UI, with profiling/DQ delegated to DuckDB |
+| **2. Producer lineage** | `CronJob/catalog-sync` (hourly :45) registers the generators as pipeline entities (`lakehouse-generators.generator-stream/-batch`) and wires lineage edges: external source → pipeline → lake table, **column-level** maps included | "who produces this table" and the full chain internet → generator → Iceberg, in the lineage graph |
+| **3. Ownership & context** | same reconciler: owners (`data-platform` team), Domains per iceberg namespace (`events`, `web`), `Tier.Tier1` tags — additive only, never clobbers human edits | governance that follows the code |
+
+### The onboarding contract (plug & play)
+
+Adding a **new queryable source** (any future Postgres/Trino/ClickHouse/S3/…):
+
+```yaml
+# either: one label on the Service (fast path — the reconciler discovers it live)
+metadata:
+  annotations:
+    catalog.io/connector: postgres     # OM connector type
+    catalog.io/secret: my-source-creds # CI-stamped credential secret (name-scoped RBAC)
+    catalog.io/database: mydb
+```
+
+Adding a **new producer** (any workload that writes tables):
+
+```yaml
+metadata:
+  annotations:
+    catalog.io/produces: datalake.ads.impressions   # comma-separated lake FQNs
+    catalog.io/owner: growth-team
+```
+
+The RICH form (column-level lineage, custom schedules, filters) lives in
+`openmetadata/sync/contracts/*.yaml` — contract entries win over labels on name
+collisions, so you can start with a label and enrich later. Both planes feed the
+same engine (`sync/configmap.yaml` — `catalog-sync.py`, script-in-ConfigMap, no
+rebuilds to onboard): **declare → reconcile → verify**, idempotent, GET-before-PUT,
+additive-only. Verified end-to-end by the offline mock harness (fake OM + k8s APIs:
+convergence + second-run strict no-op).
+
+### One-time bootstrap (per platform)
+
+```bash
+# required GitHub Secrets (see table below), then one dispatch:
+#   module=openmetadata action=bootstrap-openmetadata
+# → rotates admin away from the default, creates catalog-sync-bot, stamps
+#   Secret/openmetadata-bot — safe to re-run (token re-mint each time)
+```
+
+First apply self-heals: the server crash-loops briefly until MySQL/OpenSearch are
+ready (kustomize output is kind-sorted, not dependency-ordered — same known
+pattern as duckdb ↔ rustfs), then `apply` waits for health and fires one
+`catalog-sync` run so lineage appears in the same deploy.
+
 ## Prerequisites
 
 * `kubectl` + `kustomize` (kubectl 1.14+ embeds it) and **helm 3** (helmCharts inflation requires the helm binary)
@@ -309,18 +385,20 @@ kubectl apply -k duckdb/
 
 Manual dispatch (also `workflow_call`). Inputs:
 
-* `module`: `all` (root kustomization), `duckdb`, `rustfs`, `maintenance`, `generator`
-* `action`: `apply` | `diff` | `delete` | `dry-run` | `restart` | `logs` | `probe` | `sigprobe` | `trigger` | `repair`
+* `module`: `all` (root kustomization), `duckdb`, `rustfs`, `maintenance`, `generator`, `openmetadata`
+* `action`: `apply` | `diff` | `delete` | `dry-run` | `restart` | `logs` | `probe` | `sigprobe` | `trigger` | `repair` | `bootstrap-openmetadata` | `sync-catalog`
 * `force_rebuild` (boolean, default `false`): build both images even when change detection finds them already up to date
 
-Pipeline: **build-image** (change-gated per image — a build only runs when GHCR's `:<sha>`-tagged history shows the image's inputs changed since its last push; `maintenance/image/**` gates the Spark image, `generator/**` minus `*.yaml` the generator. Re-running the same commit, or dispatching after a manifest/ConfigMap-only change, restores the cached layers instead of pushing identical images; see `force_rebuild`) → **execute**: validate module → checkout → kubectl v1.30 → helm v3.14 → Tailscale login (`tag:git`) → write kubeconfig from the `KUBECONFIG` secret → ensure namespaces → create secrets from GitHub Secrets → `kubectl kustomize --enable-helm` build → execute action (rendered manifests are applied with `apply -f`, since `kubectl apply -k` cannot inflate helm charts).
+Pipeline: **build-image** (change-gated per image — a build only runs when GHCR's `:<sha>`-tagged history shows the image's inputs changed since its last push; `maintenance/image/**` gates the Spark image, `generator/**` minus `*.yaml` the generator, `openmetadata/sync/image/**` the catalog-sync image. Re-running the same commit, or dispatching after a manifest/ConfigMap-only change, restores the cached layers instead of pushing identical images; see `force_rebuild`) → **execute**: validate module → checkout → kubectl v1.30 → helm v3.14 → Tailscale login (`tag:git`) → write kubeconfig from the `KUBECONFIG` secret → ensure namespaces (analytics, rustfs, openmetadata) → create secrets from GitHub Secrets → `kubectl kustomize --enable-helm` build → execute action (rendered manifests are applied with `apply -f`, since `kubectl apply -k` cannot inflate helm charts).
 
 Behavior notes:
 
 * `apply` always runs the sync script afterwards (idempotent — no restart when already aligned), so rustfs changes propagate to duckdb automatically
 * `restart` maps: `duckdb` → `deployment/duckdb -n analytics`; `rustfs` → `statefulset/rustfs -n rustfs`; `maintenance` → `iceberg-maintenance-daily`; `all` → everything (targets are passed to kubectl as single `"kind/name -n ns"` units)
 * `delete` deletes the module's rendered kustomization (`--ignore-not-found`)
-* `logs` dumps recent pod logs for the module plus the two newest CronJob jobs in `analytics` — read-only cluster diagnosis from CI
+* `logs` dumps recent pod logs for the module plus the two newest CronJob jobs in `analytics` (and the newest `catalog-sync` job in `openmetadata` for module=openmetadata) — read-only cluster diagnosis from CI
+* `bootstrap-openmetadata` (module=openmetadata) — one-time/rotation ramp: rotates the default admin to `$OM_ADMIN_PASSWORD`, creates/mints the `catalog-sync-bot` token, stamps `Secret/openmetadata-bot`; idempotent
+* `sync-catalog` (module=openmetadata) — fires `cronjob/catalog-sync` immediately and streams the reconciliation report
 * `probe` (generator) runs a read-only diagnostic inside the generator-stream pod: credential shape (never values), resolved package inventory, a real `load_iceberg_catalog()` attempt with full traceback, and a signed-request matrix against the live catalog endpoint
 
 Required GitHub Secrets:
@@ -329,8 +407,11 @@ Required GitHub Secrets:
 |---|---|
 | `KUBECONFIG` | Kubeconfig reaching the cluster (Tailscale) |
 | `TAILSCALE_CLIENT_ID`, `TAILSCALE_AUTH_KEY` | Tailscale OAuth for the runner |
-| `RUSTFS_ACCESS_KEY`, `RUSTFS_SECRET_KEY` | Stamped into `rustfs-credentials` in **both** namespaces |
-| `DUCKFLIGHT_USER`, `DUCKFLIGHT_PASSWORD` | Stamped into `duckflight-auth` |
+| `RUSTFS_ACCESS_KEY`, `RUSTFS_SECRET_KEY` | Stamped into `rustfs-credentials` in **both** namespaces (plus `openmetadata` for the catalog-sync reconciler) |
+| `DUCKFLIGHT_USER`, `DUCKFLIGHT_PASSWORD` | Stamped into `duckflight-auth` (analytics + openmetadata) |
+| `OM_MYSQL_ROOT_PASSWORD`, `OM_MYSQL_PASSWORD` | Stamped into `mysql-secrets` (ns openmetadata) — bitnami root/app keys + the OM server's key |
+| `OM_FERNET_KEY` | Stamped into `openmetadata-fernet` — encrypts connector credentials server-side; set BEFORE first install (`openssl rand -base64 32`) |
+| `OM_ADMIN_PASSWORD` | Used by `bootstrap-openmetadata` to rotate the default admin and mint the catalog-sync bot token |
 
 ## Secrets
 
@@ -342,5 +423,7 @@ Required GitHub Secrets:
 * 1 file per resource — `git log -- <file>` isolates history
 * duckdb memory sizing is VPA-driven: the request → Downward API env → `init.sql` × 85% is the only place `memory_limit` is set; add no container memory limit and don't hardcode a `SET memory_limit` value
 * Helm chart upgrades: bump `version:` in `rustfs/kustomization.yaml`; helm values live in `rustfs/helm.yaml` only
+* OpenMetadata chart upgrades: bump both `version:` pins in `openmetadata/kustomization.yaml` and the matching image tags in `openmetadata/values.yaml` (`server` + `ingestion-base` must be the same version); helm values live in `openmetadata/values.yaml` / `openmetadata/deps-values.yaml` only
 * Changing `drivesPerNode` on an existing RustFS StatefulSet is not allowed (chart rule) — topologies are fixed after first deploy
 * The `duckdb-settings` ConfigMap is kustomize-managed with static defaults; the sync script's patch is the only external mutation and is re-derived on every `apply`
+* The catalog-sync reconciler only mutates OM entities it created (or absent fields) — manual annotations in the OM UI (glossary links, ER relationships, descriptions) are preserved; it never deletes lineage it didn't draw

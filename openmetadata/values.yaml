@@ -1,0 +1,218 @@
+# values.yaml — OpenMetadata app chart (v2.0.2) for the analytics platform.
+#
+# Schema of the deployed stack:
+#   OpenMetadata server  (1 Deployment, images docker.io/openmetadata/server:2.0.2)
+#   MySQL                (from the deps chart — the metadata DB, see deps-values.yaml)
+#   OpenSearch 3.3.2     (from the deps chart — the search backend)
+#   Ingestion            NATIVE Kubernetes Jobs — no Airflow.
+#
+# Every non-default value carries a WHY. The file renders clean against a
+# real helm render of the chart (validated offline with helm 3.14.4).
+
+mysql:
+  enabled: false        # [1] NOT an app-chart key outside the deps chart — but
+                        #     harmless here: the deps chart owns mysql. Declared
+                        #     as evidence of intent (the app chart is mysql-free).
+
+opensearch:
+  enabled: false        # [2] The app chart has NO opensearch subchart; the real
+                        #     one ships via openmetadata-dependencies. Alias kept
+                        #     off to avoid double-deployment confusion.
+
+airflow:
+  enabled: false        # [3] Replaced by OM's native k8s Jobs pipeline client
+                        #     (pipelineServiceClientConfig.type: "k8s").
+
+fuseki:
+  enabled: false        # [4] RDF / knowledge-graph is optional; not needed.
+
+openmetadata:
+  config:
+    clusterName: "analytics"   # [5] Identity of THIS platform inside OM.
+
+    logLevel: INFO             # [6] DEBUG would flood prod logs.
+
+    pipelineServiceClientConfig:
+      enabled: true
+      type: "k8s"              # [7] Native Kubernetes Jobs — replaces Airflow entirely.
+      metadataApiEndpoint: http://openmetadata:8585/api
+      k8s:
+        # No OMJob operator: plain Jobs/CronJobs suffice for periodic catalog
+        # ingestions, and the repo deliberately runs no CRDs. Trade-off (known
+        # and accepted): a killed ingestion pod mid-run may leave pipeline
+        # status "running" until the next scheduled run reports real state.
+        useOMJobOperator: false
+        # Version-locked with the server (docs warn: ':latest' drifts and
+        # silently breaks client/server major-version compatibility).
+        ingestionImage: docker.io/openmetadata/ingestion-base:2.0.2
+        imagePullPolicy: IfNotPresent
+        # The chart itself provisions this SA + roles in this namespace via
+        # k8s-pipeline-rbac.yaml (Role allows pods/configmaps/secrets/jobs
+        # in ns 'openmetadata') — matching the name is required.
+        serviceAccountName: openmetadata-ingestion
+        rbac:
+          enabled: true
+        ttlSecondsAfterFinished: 86400
+        activeDeadlineSeconds: 7200   # 2h hard-stop per ingestion run
+        backoffLimit: 1
+        successfulJobsHistoryLimit: 1
+        failedJobsHistoryLimit: 3
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          fsGroup: 1000
+          runAsNonRoot: true
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            cpu: "2"
+            memory: 4Gi
+
+    # Metadata DB — the bundled bitnami mysql from the deps chart (release
+    # name `openmetadata`), service name depends on fullnameOverride in
+    # deps-values.yaml → 'mysql'. Connection facts match that release.
+    database:
+      enabled: true
+      host: mysql
+      port: 3306
+      driverClass: com.mysql.cj.jdbc.Driver
+      dbScheme: mysql
+      databaseName: openmetadata_db
+      auth:
+        username: openmetadata_user
+        # CI stamps Secret/mysql-secrets in ns/openmetadata with both the
+        # bitnami-managed keys (mysql-root-password, mysql-password) and the
+        # OM server's key (openmetadata-mysql-password). One secret, both
+        # consumers — no repo-side secrets, same flow as duckflight-auth/rustfs-creds.
+        password:
+          secretRef: mysql-secrets
+          secretKey: openmetadata-mysql-password
+      dbParams: "allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC"
+      maxSize: 30       # [8] pool sized for a single-server catalog (defaults 50)
+      minSize: 5        #     on a modest k3s node; defaults are warehouse-scale
+      initialSize: 5
+
+    # Search — the bundled OpenSearch from the deps chart (fullname
+    # override 'opensearch', http, no auth inside the tailnet).
+    elasticsearch:
+      enabled: true
+      host: opensearch
+      searchType: opensearch
+      port: 9200
+      scheme: http
+      searchIndexMappingLanguage: "EN"
+
+    # Authorizer — single tenant, one admin; principal domain = OM default.
+    authorizer:
+      enabled: true
+      className: org.openmetadata.service.security.DefaultAuthorizer
+      containerRequestFilter: org.openmetadata.service.security.JwtFilter
+      initialAdmins:
+        - "admin"
+      principalDomain: "open-metadata.org"
+      enforcePrincipalDomain: false
+      enableSecureSocketConnection: false
+
+    # Auth — basic (local) accounts for the first integration; swap to a
+    # real IdP later by changing this block only.
+    authentication:
+      enabled: true
+      provider: "basic"
+      clientType: public
+      publicKeys:
+        - "http://openmetadata:8585/api/v1/system/config/jwks"
+      enableSelfSignup: false   # no public signup on a private platform
+
+    # Fernet key — encrypts connector/service credentials server-side.
+    # The chart's built-in default is public on GitHub; we refuse it and
+    # require the CI-stamped secret instead (GitHub secret OM_FERNET_KEY,
+    # generate with: openssl rand -base64 32). Must be set BEFORE first
+    # install: keys created before the secret exists would encrypt with
+    # the demo key; rotation later is painful.
+    fernetkey:
+      value: ""
+      secretRef: "openmetadata-fernet"
+      secretKey: "openmetadata-fernet-key"
+
+    # Secrets manager — the SERVER's credential store for connector
+    # passwords; 'db' provider = stored inside MySQL itself (no AWS/Azure).
+    secretsManager:
+      enabled: true
+      provider: db
+
+    # Event monitor — Prometheus-shaped metrics already scraped by the
+    # event monitor path; no extra infra.
+    eventMonitor:
+      enabled: true
+      type: prometheus
+
+    web:
+      enabled: true
+
+    # Both flags off: these would render the chart's fixed-name hook
+    # CronJobs (cron-reindex / cron-deploy-pipelines). With this repo's
+    # build-once/apply-as--f pipeline (kubectl apply, not helm upgrade),
+    # a second apply fails on 'field ... is immutable' for CronJob spec.
+    deployPipelinesConfig:
+      enabled: false
+    reindexConfig:
+      enabled: false
+
+image:
+  # docker.io/openmetadata/server is the official Docker Hub mirror of
+  # docker.getcollate.io/openmetadata/server — same digest stream, plain
+  # hub pulls simpler on the cluster.
+  repository: docker.io/openmetadata/server
+  tag: "2.0.2"
+  pullPolicy: IfNotPresent   # [9] chart default Always re-pulls the same
+                             #     tag on every restart — pure risk, zero gain.
+
+nameOverride: ""
+fullnameOverride: "openmetadata"
+
+serviceAccount:
+  create: true
+  name: ""
+
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8585
+  adminPort: 8586
+  annotations:
+    # [10] Same exposure pattern as duckdb + rustfs: the Tailscale operator
+    #      creates an HTTPS hostname so the catalog UI is reachable
+    #      tailnet-wide with zero Ingress/LoadBalancer.
+    tailscale.com/expose: "true"
+    tailscale.com/hostname: "openmetadata"
+
+serviceMonitor:
+  enabled: false   # [11] flip on once prometheus-operator CRDs are confirmed
+  interval: 30s
+
+ingress:
+  enabled: false   # Tailscale handles exposure
+
+resources:
+  requests:
+    cpu: 1
+    memory: 2Gi
+  limits:
+    cpu: "2"
+    memory: 4Gi
+
+podDisruptionBudget:
+  enabled: false   # single replica — PDB would only block node operations
+
+hpa:
+  enabled: false   # catalog server scales by sizing, not by replica count
+
+omjobOperator:
+  enabled: false   # no CRDs — plain Jobs do the ingestion work
+
+networkPolicy:
+  enabled: false

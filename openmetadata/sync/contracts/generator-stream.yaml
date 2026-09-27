@@ -1,0 +1,63 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: lineage-contract-generator-stream
+  namespace: openmetadata
+  labels:
+    catalog.io/contract: v1
+data:
+  #
+  # Plane B — lineage contract for Deployment/generator-stream.
+  #
+  # Column maps mirror streaming.py exactly:
+  #   wikipedia_edits <- recentchange {meta.dt,server_name,type,title,user,bot,revision.new,comment}
+  #   bluesky_posts   <- jetstream  {did,commit.rkey,commit.operation,commit.record,time_us,raw}
+  generator-stream.yaml: |
+    apiVersion: catalog.analytics.io/v1
+    kind: LineageContract
+    spec:
+      pipeline:
+        name: generator-stream
+        service: lakehouse-generators
+        k8sWorkload: analytics/deployment/generator-stream
+        displayName: generator-stream
+        description: >-
+          Always-on Deployment consuming two live internet firehoses and
+          appending buffered batches (>=100 rows or 60s) to the Iceberg
+          lake: Wikimedia EventStreams -> events.wikipedia_edits, Bluesky
+          Jetstream -> events.bluesky_posts.
+      owner: data-platform
+      tags: [Tier.Tier1]
+      sources:
+        - name: wikimedia-eventstreams
+          description: >-
+            Wikimedia EventStreams SSE firehose of recent wiki changes.
+            https://stream.wikimedia.org/v2/stream/recentchange
+          columns: [meta, server_name, type, title, user, bot, revision, comment]
+        - name: bluesky-jetstream
+          description: >-
+            Bluesky Jetstream WebSocket firehose of post commits.
+            wss://jetstream.us-east.bsky.network/subscribe
+          columns: [did, commit, time_us, raw]
+      outputs:
+        - table: events.wikipedia_edits
+          sourceFqn: wikimedia-eventstreams
+          columnLineage:
+            event_ts: meta             # meta.dt (ISO) -> timestamptz
+            wiki_db: server_name
+            event_type: meta           # envelope `type`
+            title: title
+            editor: user
+            is_bot: bot
+            revision_id: revision      # revision.new
+            comment: comment
+        - table: events.bluesky_posts
+          sourceFqn: bluesky-jetstream
+          columnLineage:
+            event_ts: time_us          # epoch microseconds -> timestamptz
+            did: did
+            post_uri: commit           # derived: at://{did}/app.bsky.feed.post/{rkey}
+            action: commit             # commit.operation
+            text: commit               # commit.record.text
+            langs: commit              # commit.record.langs
+            raw: raw                   # full frame JSON verbatim

@@ -1,0 +1,111 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: catalog-sync
+  namespace: openmetadata
+  labels:
+    app.kubernetes.io/name: catalog-sync
+    app.kubernetes.io/component: catalog
+---
+# Read-only reach into ns analytics: the reconciler discovers Services
+# (`catalog.io/connector`), Deployments/CronJobs (`catalog.io/produces`)
+# and reads exactly two secrets by NAME for connector credentials.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: catalog-sync-analytics
+  namespace: analytics
+  labels:
+    app.kubernetes.io/name: catalog-sync
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    # resourceNames scope: only the two CI-stamped credential secrets the
+    # reconciler needs — never a namespace-wide secret reader.
+    resourceNames: ["duckflight-auth", "rustfs-credentials"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: catalog-sync-analytics
+  namespace: analytics
+  labels:
+    app.kubernetes.io/name: catalog-sync
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: catalog-sync-analytics
+subjects:
+  - kind: ServiceAccount
+    name: catalog-sync
+    namespace: openmetadata
+---
+# Read-only reach into ns rustfs: the reconciler derives the Iceberg REST
+# facts (host/port of the S3 endpoint) from the LIVE Service — cluster is
+# the source of truth, same as sync-duckdb-rustfs.sh for duckdb.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: catalog-sync-rustfs
+  namespace: rustfs
+  labels:
+    app.kubernetes.io/name: catalog-sync
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: catalog-sync-rustfs
+  namespace: rustfs
+  labels:
+    app.kubernetes.io/name: catalog-sync
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: catalog-sync-rustfs
+subjects:
+  - kind: ServiceAccount
+    name: catalog-sync
+    namespace: openmetadata
+---
+# Read access in its own namespace: contracts (ConfigMaps).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: catalog-sync-openmetadata
+  namespace: openmetadata
+  labels:
+    app.kubernetes.io/name: catalog-sync
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: catalog-sync-openmetadata
+  namespace: openmetadata
+  labels:
+    app.kubernetes.io/name: catalog-sync
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: catalog-sync-openmetadata
+subjects:
+  - kind: ServiceAccount
+    name: catalog-sync
+    namespace: openmetadata

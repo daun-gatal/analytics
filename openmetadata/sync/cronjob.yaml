@@ -1,0 +1,123 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: catalog-sync
+  namespace: openmetadata
+  labels:
+    app.kubernetes.io/name: catalog-sync
+    app.kubernetes.io/component: catalog
+spec:
+  # Hourly at :45 — after the even-hour metadata ingestions (:00) have
+  # refreshed table entities, so new tables have edges on the same cycle.
+  # concurrency Policy Forbid: a long run must not overlap itself.
+  schedule: "45 */2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      activeDeadlineSeconds: 900 # 15m hard stop — reconciliation is API work
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: catalog-sync
+            app.kubernetes.io/component: catalog
+        spec:
+          serviceAccountName: catalog-sync
+          restartPolicy: Never
+          containers:
+            - name: sync
+              # kustomization.yaml images: transformer pins newName/newTag
+              image: catalog-sync
+              imagePullPolicy: Always
+              command: ["python", "/opt/catalog-sync/catalog-sync.py"]
+              env:
+                # OM endpoint + bot token (bootstrap action stamps the token)
+                - name: OM_HOST
+                  value: http://openmetadata:8585/api
+                - name: OM_BOT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: openmetadata-bot
+                      key: OM_BOT_TOKEN
+                # RustFS REST catalog facts (same sources as maintenance/generator)
+                - name: RUSTFS_PROTOCOL
+                  valueFrom:
+                    configMapKeyRef:
+                      name: catalog-sync-settings
+                      key: RUSTFS_PROTOCOL
+                - name: RUSTFS_ENDPOINT_HOST
+                  valueFrom:
+                    configMapKeyRef:
+                      name: catalog-sync-settings
+                      key: RUSTFS_ENDPOINT_HOST
+                - name: RUSTFS_ENDPOINT_PORT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: catalog-sync-settings
+                      key: RUSTFS_ENDPOINT_PORT
+                - name: RUSTFS_REGION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: catalog-sync-settings
+                      key: RUSTFS_REGION
+                - name: RUSTFS_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: rustfs-credentials
+                      key: RUSTFS_ACCESS_KEY
+                - name: RUSTFS_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: rustfs-credentials
+                      key: RUSTFS_SECRET_KEY
+                # reconciler knobs (RECON_*)
+                - name: RECON_NAMESPACE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: catalog-sync-config
+                      key: RECON_NAMESPACE
+                - name: RECON_ANALYTICS_NS
+                  valueFrom:
+                    configMapKeyRef:
+                      name: catalog-sync-config
+                      key: RECON_ANALYTICS_NS
+                - name: RECON_CLUSTER_DOMAIN
+                  valueFrom:
+                    configMapKeyRef:
+                      name: catalog-sync-config
+                      key: RECON_CLUSTER_DOMAIN
+                - name: RECON_OWNER
+                  valueFrom:
+                    configMapKeyRef:
+                      name: catalog-sync-config
+                      key: RECON_OWNER
+                - name: RECON_WAREHOUSE
+                  valueFrom:
+                    configMapKeyRef:
+                      name: catalog-sync-config
+                      key: RECON_WAREHOUSE
+                # Keep stdout (progress lines) unbuffered so kubectl logs
+                # interleaves it with stderr in real order.
+                - name: PYTHONUNBUFFERED
+                  value: "1"
+              volumeMounts:
+                - name: sync-script
+                  mountPath: /opt/catalog-sync
+                  readOnly: true
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 512Mi
+                limits:
+                  cpu: "1"
+                  memory: 1Gi
+          volumes:
+            - name: sync-script
+              configMap:
+                name: catalog-sync-config
+                items:
+                  - key: catalog-sync.py
+                    path: catalog-sync.py
