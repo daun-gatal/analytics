@@ -41,6 +41,17 @@ spec:
         app.kubernetes.io/name: metabase-db
         app.kubernetes.io/component: metabase
     spec:
+      # Run as the image's postgres user (uid/gid 70 in -alpine) from the
+      # start. As root, docker-entrypoint.sh re-execs itself through gosu to
+      # drop privileges — and gosu 1.19 hangs forever under this cluster's
+      # runtime (k3s/containerd 2.3: PID 1 stuck in gosu, no log output,
+      # liveness kills it). Non-root, the entrypoint skips gosu entirely.
+      # fsGroup makes the Longhorn volume writable for gid 70.
+      securityContext:
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        fsGroupChangePolicy: OnRootMismatch
       containers:
         - name: postgres
           image: postgres:18.6-alpine
