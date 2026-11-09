@@ -1,0 +1,132 @@
+# Polaris Console — web UI for Polaris (apache/polaris-tools, console/).
+#
+# Upstream publishes no image: CI builds it from the commit pinned as the
+# image tag in kustomization.yaml (build-image job, deploy.yaml) and pushes
+# ghcr.io/daun-gatal/analytics/polaris-console:<commit>.
+#
+#   UI        http://polaris-console   (tailnet only)
+#   login     principal `admin` (role service_admin):
+#               kubectl get secret polaris-admin -n polaris -o jsonpath='{.data.client-id}' | base64 -d
+#               kubectl get secret polaris-admin -n polaris -o jsonpath='{.data.client-secret}' | base64 -d
+#
+# The app runs in the browser and calls the Polaris API itself, so the
+# browser must reach it. One origin, no CORS: VITE_POLARIS_API_URL is the
+# console's OWN tailnet URL and its nginx forwards /api/ to Polaris
+# in-cluster. Polaris stays off the tailnet; the forwarded API needs the
+# same OAuth2 tokens as any client.
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: polaris-console-proxy
+  namespace: polaris
+  labels:
+    app.kubernetes.io/name: polaris-console
+data:
+  # Included inside the image's default server block (UBI nginx loads
+  # nginx.default.d/*.conf there), next to its own location / and /health.
+  # /api/ is the longer prefix, so it wins over location /.
+  api-proxy.conf: |
+    location /api/ {
+        proxy_pass http://polaris.polaris.svc.cluster.local:8181;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+        client_max_body_size 10m;
+    }
+---
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: polaris-console
+  namespace: polaris
+  labels:
+    app.kubernetes.io/name: polaris-console
+    app.kubernetes.io/component: console
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: polaris-console
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: polaris-console
+        app.kubernetes.io/component: console
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10000   # `polaris` user of the image
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: console
+          image: polaris-console   # pinned in kustomization.yaml
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # read at start by the image's generate-config.sh -> config.js
+            - name: VITE_POLARIS_API_URL
+              value: http://polaris-console
+            - name: VITE_OAUTH_TOKEN_URL
+              value: http://polaris-console/api/catalog/v1/oauth/tokens
+            - name: VITE_POLARIS_REALM
+              value: POLARIS
+            - name: VITE_POLARIS_PRINCIPAL_SCOPE
+              value: PRINCIPAL_ROLE:ALL
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            # not read-only: generate-config.sh writes config.js at start
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            - name: proxy
+              mountPath: /opt/app-root/etc/nginx.default.d/api-proxy.conf
+              subPath: api-proxy.conf
+              readOnly: true
+      volumes:
+        - name: proxy
+          configMap:
+            name: polaris-console-proxy
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: polaris-console
+  namespace: polaris
+  labels:
+    app.kubernetes.io/name: polaris-console
+    app.kubernetes.io/component: console
+  annotations:
+    tailscale.com/expose: 'true'
+    tailscale.com/hostname: polaris-console
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: polaris-console

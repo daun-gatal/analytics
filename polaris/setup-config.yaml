@@ -18,6 +18,8 @@ data:
   # Principals -> principal role -> catalog role (privileges in the script):
   #   duckdb    lakehouse_reader -> lakehouse.reader  read only
   #   bezisync  lakehouse_writer -> lakehouse.writer  create + commit, no drop
+  #   admin     service_admin (built-in)              full admin: the console
+  #                                                   login (Secret/polaris-admin)
   #
   # The `lakehouse` bucket and Polaris's RustFS user `polaris` are created
   # by Job/rustfs-bootstrap (rustfs module), which owns buckets and IAM.
@@ -80,10 +82,15 @@ data:
     ]
     CATALOG_ROLES = {"reader": READ, "writer": WRITE}
 
-    # principal -> catalog role; credentials come from <PREFIX>_CLIENT_ID/_SECRET
+    # (principal, catalog role, env prefix); credentials come from
+    # <PREFIX>_CLIENT_ID/_SECRET. Catalog role None = Polaris's built-in
+    # principal role `service_admin` (manages catalogs, principals, roles,
+    # and is catalog_admin on every catalog) - the console login, so the
+    # realm's root credentials never go into a browser.
     PRINCIPALS = [
         ("duckdb", "reader", "POLARIS_DUCKDB"),
         ("bezisync", "writer", "POLARIS_BEZISYNC"),
+        ("admin", None, "POLARIS_ADMIN"),
     ]
 
 
@@ -194,12 +201,15 @@ data:
         # 3. principals: principal -> principal role -> catalog role
         for name, role, prefix in PRINCIPALS:
             client_id, client_secret = need(f"{prefix}_CLIENT_ID"), need(f"{prefix}_CLIENT_SECRET")
-            principal_role = f"{catalog}_{role}"
-            if get(f"/principal-roles/{principal_role}", token) is None:
-                request("POST", mgmt + "/principal-roles", token=token,
-                        body={"principalRole": {"name": principal_role}})
-            request("PUT", f"{mgmt}/principal-roles/{principal_role}/catalog-roles/{catalog}",
-                    token=token, body={"catalogRole": {"name": role}})
+            if role is None:
+                principal_role, granted = "service_admin", "service_admin"
+            else:
+                principal_role, granted = f"{catalog}_{role}", f"{catalog}.{role}"
+                if get(f"/principal-roles/{principal_role}", token) is None:
+                    request("POST", mgmt + "/principal-roles", token=token,
+                            body={"principalRole": {"name": principal_role}})
+                request("PUT", f"{mgmt}/principal-roles/{principal_role}/catalog-roles/{catalog}",
+                        token=token, body={"catalogRole": {"name": role}})
 
             if get(f"/principals/{name}", token) is None:
                 request("POST", mgmt + "/principals", token=token, body={
@@ -216,9 +226,12 @@ data:
                     body={"principalRole": {"name": principal_role}})
 
             # verify end to end: the principal signs in and sees the catalog
+            # (the admin also lists principals, as the console does)
             t = sign_in(client_id, client_secret)
             request("GET", f"{base}/api/catalog/v1/config?warehouse={catalog}", token=t)
-            print(f"✅ Polaris: principal '{name}' -> {principal_role} -> {catalog}.{role} works")
+            if role is None:
+                request("GET", mgmt + "/principals", token=t)
+            print(f"✅ Polaris: principal '{name}' -> {principal_role} -> {granted} works")
     except Refused as e:
         print(f"❌ Polaris: {e}")
         sys.exit(1)

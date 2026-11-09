@@ -82,7 +82,7 @@ flowchart LR
 ```
 
 * DuckDB pods are **disposable** — the only state is in the lake. The HPA scales `duckdb` 1→3 on CPU pressure; the VPA owns memory sizing (2–6Gi, `InPlaceOrRecreate` — request raises resize the pod in place, no restart), and each pod re-derives its `memory_limit` from the request at start.
-* Only **Metabase** is on the **Tailscale** tailnet by default (`http://metabase`). It reaches DuckDB in-cluster, as do all other consumers. `duckdb` and `rustfs` join the tailnet only when a deploy asks for it — see [Tailscale exposure](#tailscale-exposure).
+* Only **Metabase** (`http://metabase`) and the **Polaris Console** (`http://polaris-console`) are on the **Tailscale** tailnet by default. Metabase reaches DuckDB in-cluster, as do all other consumers. `duckdb` and `rustfs` join the tailnet only when a deploy asks for it — see [Tailscale exposure](#tailscale-exposure).
 
 ### What happens at pod start
 
@@ -131,7 +131,7 @@ flowchart TD
 | Lakehouse bucket | `lakehouse` — plain bucket, catalog = **Apache Polaris** 1.8.0 (`http://polaris.polaris.svc.cluster.local:8181/api/catalog`, catalog `lakehouse`, OAuth2 client credentials) |
 | Object storage | RustFS chart v1.0.4, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
 | Scaling | duckdb: HPA 1–3 replicas (CPU 65%) + VPA memory 2–6Gi (InPlaceOrRecreate) — `memory_limit` = 85% × request via the Downward API |
-| Exposure | Tailscale: `metabase` always; `duckdb` / `rustfs` opt-in per deploy (`tailscale_expose`) |
+| Exposure | Tailscale: `metabase` and `polaris-console` always; `duckdb` / `rustfs` opt-in per deploy (`tailscale_expose`) |
 | Auth | DuckFlight PBKDF2-hashed creds + TLS, per-boot cert with `<service>.<ns>` SANs |
 | Credentials | Single GitHub Secret pair, stamped by CI into both namespaces |
 | Iceberg maintenance | CronJob `iceberg-maintenance-daily` in `analytics` at 02:00 (compact → manifests → expire snapshots → orphan cleanup) · Spark local mode · image `ghcr.io/daun-gatal/analytics/iceberg-maintenance` (public, built by CI) |
@@ -165,7 +165,8 @@ analytics/                     # repo root for manifests (this dir)
 │   ├── helm.yaml                    # chart values: relational-jdbc, token key, RustFS keys, schema + realm bootstrap init containers
 │   ├── postgres.yaml                # polaris-db: headless Service + Postgres 18 StatefulSet (metastore)
 │   ├── setup-config.yaml            # polaris-setup-config: setup-polaris.py, register-bezisync.py (lakehouse) + knobs
-│   └── setup-job.yaml               # Job/polaris-setup — catalog, roles, principals, lakehouse destination, per apply
+│   ├── setup-job.yaml               # Job/polaris-setup — catalog, roles, principals, lakehouse destination, per apply
+│   └── console.yaml                 # Polaris Console (CI-built image) + /api/ forwarding to Polaris, tailnet `polaris-console`
 ├── maintenance/               # Iceberg table maintenance (Spark local-mode CronJobs)
 │   ├── kustomization.yaml           # pins the CI-built ghcr.io image
 │   ├── configmap.yaml               # maintenance-config: maintenance.py + MAINT_* tunables
@@ -267,6 +268,7 @@ The `polaris/` module runs [Apache Polaris](https://polaris.apache.org) **1.8.0*
   |---|---|---|---|
   | `duckdb` | `lakehouse_reader` → `lakehouse.reader` | list + read namespaces, tables, views | `polaris-duckdb` (also copied to ns `analytics`) |
   | `bezisync` | `lakehouse_writer` → `lakehouse.writer` | reader + create namespaces/tables, commit; **no drop** | `polaris-bezisync` |
+  | `admin` | `service_admin` (built-in) | everything — the **console login** | `polaris-admin` |
   | `root` | `service_admin` (realm bootstrap) | everything — used only by the setup Job | `polaris-root` |
 
   Add a client by adding a `PRINCIPALS` entry in `polaris/setup-config.yaml` plus its Secret in `deploy.yaml`.
@@ -276,7 +278,14 @@ The `polaris/` module runs [Apache Polaris](https://polaris.apache.org) **1.8.0*
 * **Bootstrap:** two init containers on the Polaris pod run on every start, before the server: `CREATE SCHEMA IF NOT EXISTS polaris_schema`, then the admin tool's realm `bootstrap` (prints `already bootstrapped; skipping` after the first time). Polaris never starts against an un-bootstrapped database.
 * **Setup:** `Job/polaris-setup` (every polaris/all apply) creates or updates the catalog, its roles and grants, and the principals. It pins each principal's credentials to its Secret, verifies every principal end to end, then registers the BeziSync `lakehouse` destination. The bucket and Polaris's RustFS user come from `Job/rustfs-bootstrap`.
 * **Secrets:** CI generates once, never rotated: `polaris-db` (must keep matching the volume), `polaris-root` (fixed at the realm's first bootstrap), `polaris-token-key` (signs access tokens; a fixed key keeps tokens valid across restarts), `polaris-duckdb`, `polaris-bezisync`, and `rustfs-polaris` (ns `rustfs`, copied to `polaris`).
-* **No UI:** the Polaris Console publishes no container image, so it isn't deployed. Use the management API (`/api/management/v1`) with the root credentials.
+* **Console:** [Polaris Console](https://polaris.apache.org/tools/polaris-console/) at **`http://polaris-console`** (tailnet). Log in as principal **`admin`**:
+  ```bash
+  kubectl get secret polaris-admin -n polaris -o jsonpath='{.data.client-id}' | base64 -d      # admin
+  kubectl get secret polaris-admin -n polaris -o jsonpath='{.data.client-secret}' | base64 -d
+  ```
+  * **Image:** upstream (`apache/polaris-tools`, `console/`) has never released one. CI builds it from the commit pinned as the `polaris-console` image tag in `polaris/kustomization.yaml`, the only place the pin lives. It's pushed as `ghcr.io/daun-gatal/analytics/polaris-console:<commit>` and built only when that tag isn't on GHCR yet. To update, set a newer polaris-tools commit (full sha) there. The first push creates the package **private**: flip it to public once, like the other two images. The console is unreleased upstream `main`, so expect rough edges.
+  * **One origin:** the app runs in the browser and calls the Polaris API itself. The console's nginx forwards `/api/` to Polaris in-cluster (`polaris-console-proxy` ConfigMap), and the app is pointed at its own URL. The browser never talks to Polaris directly: no CORS, and Polaris stays off the tailnet. The forwarded API still needs a principal's OAuth2 token.
+  * Anyone on the tailnet reaches the login page; only `admin`'s credentials get further.
 * Validated in a scratch namespace (2026-11-10, Polaris 1.8.0 + RustFS 1.0.4): rerunnable bootstrap and setup; PyIceberg 0.10.0 as `bezisync` create, append and add-column, with drop table/namespace denied; `duckdb` read with create denied; no credentials vended; DuckDB 2.0.0 `ATTACH` with token renewal across expiry; BeziSync draft check of the `lakehouse` destination: Ready.
 
 ## BeziSync destinations (auto-registered)
@@ -441,7 +450,7 @@ Manual dispatch (also `workflow_call`). Inputs:
 * `force_rebuild` (boolean, default `false`): build both images even when change detection finds them already up to date
 * `tailscale_expose` (`none` | `duckdb` | `rustfs` | `all`, default `none`): also put those Services on the tailnet for this apply/diff/dry-run (metabase always is). Only Services inside the chosen `module` are affected; see [Tailscale exposure](#tailscale-exposure)
 
-Pipeline: **build-image** (change-gated per image — a build only runs when GHCR's `:<sha>`-tagged history shows the image's inputs changed since its last push; `maintenance/image/**` gates the Spark image, `generator/**` minus `*.yaml` the generator. Re-running the same commit, or dispatching after a manifest/ConfigMap-only change, restores the cached layers instead of pushing identical images; see `force_rebuild`) → **execute**: validate module → checkout → kubectl v1.30 → helm v3.14 → Tailscale login (`tag:git`) → write kubeconfig from the `KUBECONFIG` secret → ensure namespaces → create secrets from GitHub Secrets → `scripts/build-manifests.sh` build (`kubectl kustomize --enable-helm` + `tailscale_expose` components) → execute action (rendered manifests are applied with `apply -f`, since `kubectl apply -k` cannot inflate helm charts).
+Pipeline: **build-image** (change-gated per image — a build only runs when GHCR's `:<sha>`-tagged history shows the image's inputs changed since its last push; `maintenance/image/**` gates the Spark image, `generator/**` minus `*.yaml` the generator; the Polaris Console builds only when GHCR has no image tagged with its pinned upstream commit. Re-running the same commit, or dispatching after a manifest/ConfigMap-only change, restores the cached layers instead of pushing identical images; see `force_rebuild`) → **execute**: validate module → checkout → kubectl v1.30 → helm v3.14 → Tailscale login (`tag:git`) → write kubeconfig from the `KUBECONFIG` secret → ensure namespaces → create secrets from GitHub Secrets → `scripts/build-manifests.sh` build (`kubectl kustomize --enable-helm` + `tailscale_expose` components) → execute action (rendered manifests are applied with `apply -f`, since `kubectl apply -k` cannot inflate helm charts).
 
 Behavior notes:
 
@@ -466,7 +475,7 @@ Required GitHub Secrets:
 * Exception: `metabase-secrets` is generated in-cluster (`openssl rand`) only when absent and never overwritten — no GitHub Secret, and deliberately not rotatable by re-running CI
 * Also generated once: `metabase-admin` (ns `analytics`, the Metabase admin the register Job sets up and signs in as) and `rustfs-bezisync` (ns `rustfs`, the RustFS user BeziSync writes with). `bezisync-login` (ns `rustfs`) is not generated: CI copies it from BeziSync's bootstrap admin on every run.
 * Rotating `rustfs-bezisync`: delete the Secret, re-apply `module=rustfs` (the Job upserts the user with the new key), then update the secret access key on both BeziSync connections (`rustfs-lake` and `lakehouse`; CI re-copies the Secret to ns `polaris` on every run); the registration skips existing connections, so it won't update it for you
-* Rotating a Polaris principal (`polaris-duckdb` / `polaris-bezisync`): delete the Secret and re-apply `module=polaris`. `Job/polaris-setup` resets the principal to the new pair. Then restart duckdb (`action=restart module=duckdb`), or update the client secret on BeziSync's `lakehouse` connection
+* Rotating a Polaris principal (`polaris-duckdb` / `polaris-bezisync` / `polaris-admin`): delete the Secret and re-apply `module=polaris`. `Job/polaris-setup` resets the principal to the new pair. Then restart duckdb (`action=restart module=duckdb`), update the client secret on BeziSync's `lakehouse` connection, or log in to the console with the new `admin` secret
 * Rotate: update the GitHub Secret, run this workflow with `action=apply`, then `action=restart` with `module=duckdb` (rustfs picks up creds on its own restart)
 
 ## Maintenance Notes
