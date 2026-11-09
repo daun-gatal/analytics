@@ -20,7 +20,8 @@ data:
   DUCKFLIGHT_PG_PORT: '5433'
   DUCKFLIGHT_FLIGHT_PORT: '31337'
   #
-  # Lakekeeper Iceberg REST catalog (rustfs/lakekeeper.yaml) — attached as
-  # catalog `lakehouse` when its warehouse is reachable at pod start.
-  LAKEKEEPER_URL: http://lakekeeper.rustfs.svc.cluster.local:8181
-  LAKEKEEPER_WAREHOUSE: lakehouse
+  # Apache Polaris Iceberg REST catalog (polaris module) — attached as
+  # catalog `lakehouse` when it answers at pod start. DuckDB signs in as
+  # Polaris principal `duckdb` (read only; Secret/polaris-duckdb).
+  POLARIS_URL: http://polaris.polaris.svc.cluster.local:8181
+  POLARIS_CATALOG: lakehouse

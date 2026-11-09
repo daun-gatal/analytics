@@ -152,37 +152,48 @@ data:
     chmod 600 /runtime/duckflight.toml
 
     #
-    # Lakekeeper `lakehouse` catalog — attached only when reachable.
+    # Polaris `lakehouse` catalog — attached only when reachable.
     #
     # An ATTACH that fails in init.sql stops DuckDB from starting, which
-    # would take the `datalake` endpoint down with it. So probe the
-    # warehouse here (its REST config endpoint answers 200 only once the
-    # warehouse exists) and hand init.sql either the ATTACH or a no-op.
-    # CI restarts duckdb after Job/rustfs-bootstrap when this pod started
-    # before the warehouse existed (fresh deploys).
+    # would take the `datalake` endpoint down with it. So probe here: sign
+    # in as principal `duckdb` and read the catalog's REST config (200 only
+    # once the catalog exists AND this principal is granted on it), then
+    # hand init.sql either the ATTACH or a no-op. CI restarts duckdb after
+    # Job/polaris-setup when this pod started before the catalog existed
+    # (fresh deploys). The client secret stays in env: the generated SQL
+    # reads it with getenv(), it is never written to /runtime.
     #
     LAKEHOUSE_SQL=/runtime/attach-lakehouse.sql
-    echo "-- lakehouse: not attached (Lakekeeper warehouse unreachable at pod start)" > "${LAKEHOUSE_SQL}"
-    if [ -n "${LAKEKEEPER_URL:-}" ] && [ -n "${LAKEKEEPER_WAREHOUSE:-}" ]; then
+    echo "-- lakehouse: not attached (Polaris catalog unreachable at pod start)" > "${LAKEHOUSE_SQL}"
+    if [ -n "${POLARIS_URL:-}" ] && [ -n "${POLARIS_CATALOG:-}" ] && [ -n "${POLARIS_CLIENT_ID:-}" ]; then
       _waited=0
-      while [ "${_waited}" -lt "${LAKEKEEPER_WAIT_SECONDS:-90}" ]; do
-        if wget -q -T 5 -O /dev/null "${LAKEKEEPER_URL}/catalog/v1/config?warehouse=${LAKEKEEPER_WAREHOUSE}" 2>/dev/null; then
+      while [ "${_waited}" -lt "${POLARIS_WAIT_SECONDS:-90}" ]; do
+        _token="$(wget -q -T 5 -O - \
+            --post-data="grant_type=client_credentials&client_id=${POLARIS_CLIENT_ID}&client_secret=${POLARIS_CLIENT_SECRET}&scope=PRINCIPAL_ROLE:ALL" \
+            "${POLARIS_URL}/api/catalog/v1/oauth/tokens" 2>/dev/null \
+          | sed -n 's/.*"access_token" *: *"\([^"]*\)".*/\1/p')"
+        if [ -n "${_token}" ] && wget -q -T 5 -O /dev/null --header "Authorization: Bearer ${_token}" \
+            "${POLARIS_URL}/api/catalog/v1/config?warehouse=${POLARIS_CATALOG}" 2>/dev/null; then
           cat > "${LAKEHOUSE_SQL}" <<EOF
-    ATTACH '${LAKEKEEPER_WAREHOUSE}' AS ${LAKEKEEPER_WAREHOUSE} (
+    ATTACH '${POLARIS_CATALOG}' AS ${POLARIS_CATALOG} (
         TYPE ICEBERG,
-        URI '${LAKEKEEPER_URL}/catalog',
-        AUTHORIZATION_TYPE 'none',
+        URI '${POLARIS_URL}/api/catalog',
+        CLIENT_ID getenv('POLARIS_CLIENT_ID'),
+        CLIENT_SECRET getenv('POLARIS_CLIENT_SECRET'),
+        OAUTH2_SERVER_URI '${POLARIS_URL}/api/catalog/v1/oauth/tokens',
+        OAUTH2_SCOPE 'PRINCIPAL_ROLE:ALL',
         ACCESS_DELEGATION_MODE 'none'
     );
     EOF
-          echo "✅ Lakekeeper warehouse '${LAKEKEEPER_WAREHOUSE}' reachable: will be attached" >&2
+          echo "✅ Polaris catalog '${POLARIS_CATALOG}' reachable: will be attached" >&2
           break
         fi
         sleep 5
         _waited=$((_waited + 5))
       done
+      unset _token
       grep -q "^ATTACH" "${LAKEHOUSE_SQL}" || \
-        echo "⚠️  Lakekeeper warehouse '${LAKEKEEPER_WAREHOUSE}' unreachable after ${_waited}s: starting without it" >&2
+        echo "⚠️  Polaris catalog '${POLARIS_CATALOG}' unreachable after ${_waited}s: starting without it" >&2
     fi
 
   init.sql: |
@@ -252,11 +263,12 @@ data:
         SUPPORT_NESTED_NAMESPACES true
     );
 
-    -- Lakekeeper REST catalog (`lakehouse` warehouse on s3://lakehouse):
-    -- the ATTACH or a no-op, decided by the init container (see
-    -- generate-config.sh). Data files are read with the rustfs_s3 secret
-    -- above (unscoped, so it also covers s3://lakehouse); Lakekeeper vends
-    -- no credentials.
+    -- Polaris REST catalog (`lakehouse` on s3://lakehouse): the ATTACH or a
+    -- no-op, decided by the init container (see generate-config.sh). DuckDB
+    -- signs in with OAuth2 client credentials and renews the token itself
+    -- when it expires (validated on 2.0.0). Data files are read with the
+    -- rustfs_s3 secret above (unscoped, so it also covers s3://lakehouse);
+    -- Polaris vends no credentials.
     .read /runtime/attach-lakehouse.sql
 
     --

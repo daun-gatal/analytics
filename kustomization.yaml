@@ -5,6 +5,7 @@ resources:
   - namespace.yaml
   - duckdb/
   - rustfs/
+  - polaris/
   - maintenance/
   - generator/
   - metabase/

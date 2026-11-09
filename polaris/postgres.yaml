@@ -1,0 +1,97 @@
+# Postgres for Polaris's metastore (relational-jdbc, schema polaris_schema).
+#
+# Secret/polaris-db (username, password, jdbcUrl) is generated once by CI
+# and never rotated: the password must keep matching the initialised
+# volume. Polaris's init containers create the schema and bootstrap the
+# realm (helm.yaml).
+kind: Service
+apiVersion: v1
+metadata:
+  name: polaris-db
+  namespace: polaris
+  labels:
+    app.kubernetes.io/name: polaris-db
+    app.kubernetes.io/component: polaris
+spec:
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+  selector:
+    app.kubernetes.io/name: polaris-db
+---
+kind: StatefulSet
+apiVersion: apps/v1
+metadata:
+  name: polaris-db
+  namespace: polaris
+  labels:
+    app.kubernetes.io/name: polaris-db
+    app.kubernetes.io/component: polaris
+spec:
+  serviceName: polaris-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: polaris-db
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: polaris-db
+        app.kubernetes.io/component: polaris
+    spec:
+      # Same as metabase/postgres.yaml: run as the image's postgres user
+      # (70:70) and AppArmor-unconfined — this node's containerd profile
+      # denies signals between processes in a container, which Postgres
+      # needs. Drop appArmorProfile once the node profile is fixed.
+      securityContext:
+        appArmorProfile:
+          type: Unconfined
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: postgres
+          image: postgres:18.6-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: polaris
+            - name: POSTGRES_DB
+              value: polaris
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: polaris-db
+                  key: password
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "polaris", "-d", "polaris"]
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "polaris", "-d", "polaris"]
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: longhorn
+        resources:
+          requests:
+            storage: 5Gi

@@ -3,7 +3,7 @@
 # build-manifests.sh — render a module, optionally with Tailscale exposure.
 #
 # Usage: scripts/build-manifests.sh <module-path> [tailscale_expose] > built.yaml
-#   module-path       . | duckdb | rustfs | maintenance | generator | metabase
+#   module-path       . | duckdb | rustfs | polaris | maintenance | generator | metabase
 #   tailscale_expose  none (default) | duckdb | rustfs | all
 #
 # Metabase is always on the tailnet (metabase/service.yaml). duckdb and

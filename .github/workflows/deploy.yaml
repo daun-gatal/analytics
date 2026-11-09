@@ -11,6 +11,7 @@ on:
           - all
           - duckdb
           - rustfs
+          - polaris
           - maintenance
           - generator
           - metabase
@@ -32,7 +33,7 @@ on:
           - trigger
           - repair
       force_rebuild:
-        description: 'Rebuild both images even if unchanged since last push'
+        description: 'Rebuild all images (incl. the Polaris Console) even if unchanged since last push'
         required: false
         type: boolean
         default: false
@@ -164,6 +165,7 @@ jobs:
           # yaml (manifests don't end up in the image)
           gate generator generator -- generator ':(exclude)generator/*.yaml'
 
+
       - name: Build and push
         if: ${{ steps.changes.outputs.maintenance != '0' }}
         uses: docker/build-push-action@v6
@@ -188,13 +190,90 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  build-console:
+    # Polaris Console image. Upstream (apache/polaris-tools, console/)
+    # publishes none, so it is built here from the polaris-tools commit
+    # pinned as the polaris-console image tag in polaris/kustomization.yaml
+    # (the single place the pin lives) and pushed as
+    # ghcr.io/<repo>/polaris-console:<commit> — a PUBLIC package (the first
+    # push creates it private: flip it once).
+    #
+    # Its own job, in parallel with build-image: it only needs the pin, and
+    # only deploys of the console wait for it (module all/polaris; read-only
+    # actions skip it like build-image). The tag IS the pinned commit, so
+    # an existing tag means that exact build is published: skip, unless
+    # force_rebuild.
+    if: ${{ !(inputs.action == 'logs' || inputs.action == 'trigger' || inputs.action == 'sigprobe') && (inputs.module == 'all' || inputs.module == 'polaris') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: polaris/kustomization.yaml
+          sparse-checkout-cone-mode: false
+
+      - name: Read Polaris Console pin
+        id: pin
+        run: |
+          REF="$(awk '/name: polaris-console/ {f=1} f && /newTag:/ {print $2; exit}' polaris/kustomization.yaml)"
+          if ! printf '%s' "$REF" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "❌ polaris-console newTag in polaris/kustomization.yaml must be a full 40-char commit sha (got '${REF}')"
+            exit 1
+          fi
+          echo "▸ Polaris Console pin: apache/polaris-tools@${REF}"
+          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect image already published
+        id: changes
+        # fail-open: a registry glitch must never block a real build
+        continue-on-error: true
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/polaris-console:${{ steps.pin.outputs.ref }}"
+          if [ "${{ inputs.force_rebuild }}" = "true" ]; then
+            echo "▸ force_rebuild — building ${IMAGE}"
+            echo "build=1" >> "$GITHUB_OUTPUT"
+          elif docker buildx imagetools inspect "${IMAGE}" >/dev/null 2>&1; then
+            echo "▸ ${IMAGE} already published — skipping build"
+            echo "build=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "▸ ${IMAGE} not on GHCR yet — building"
+            echo "build=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Straight from the pinned upstream commit (git context, the console/
+      # subdirectory) with upstream's own Dockerfile.
+      - name: Build and push Polaris Console
+        if: ${{ steps.changes.outputs.build != '0' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: https://github.com/apache/polaris-tools.git#${{ steps.pin.outputs.ref }}:console
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/polaris-console:${{ steps.pin.outputs.ref }}
+          cache-from: type=gha,scope=polaris-console
+          cache-to: type=gha,mode=max,scope=polaris-console
+
   execute:
-    needs: build-image
-    # always() + result check: build-image is skipped for read-only actions
-    # (logs/trigger/sigprobe) and execute must still run in that case —
-    # while a real build FAILURE still stops the pipeline. Change-gated
-    # builds (both steps skipped inside the job) still count as success.
-    if: ${{ always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped') }}
+    needs: [build-image, build-console]
+    # always() + result check: the build jobs are skipped for read-only
+    # actions (logs/trigger/sigprobe), build-console also for modules
+    # without the console, and execute must still run then — while a real
+    # build FAILURE in either still stops the pipeline. Change-gated builds
+    # (build steps skipped inside the job) still count as success.
+    if: ${{ always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped') && (needs.build-console.result == 'success' || needs.build-console.result == 'skipped') }}
     runs-on: ubuntu-latest
     env:
       MODULE_PATH: ${{ inputs.module == 'all' && '.' || inputs.module }}
@@ -208,8 +287,8 @@ jobs:
       - name: Validate module
         run: |
           case "${MODULE_PATH}" in
-            .|duckdb|rustfs|maintenance|generator|metabase) ;;
-            *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs, maintenance, generator, metabase)" && exit 1 ;;
+            .|duckdb|rustfs|polaris|maintenance|generator|metabase) ;;
+            *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs, polaris, maintenance, generator, metabase)" && exit 1 ;;
           esac
 
       - uses: actions/checkout@v4
@@ -255,7 +334,7 @@ jobs:
 
       - name: Ensure Namespaces
         run: |
-          for NS in analytics rustfs; do
+          for NS in analytics rustfs polaris; do
             echo "→ ensuring namespace/$NS"
             kubectl create namespace "$NS" --dry-run=client -o yaml | kubectl apply -f -
           done
@@ -297,58 +376,62 @@ jobs:
               --from-literal=password="Mb-$(openssl rand -hex 16)"
           fi
           # RustFS user for BeziSync (policy bezisync-iceberg, see
-          # rustfs/bezisync-config.yaml): generated in-cluster ONCE. The
-          # rustfs-bootstrap Job upserts the user with it on every apply and
-          # hands it to BeziSync when it creates the destination.
+          # rustfs/iam-config.yaml): generated in-cluster ONCE. The
+          # rustfs-bootstrap Job upserts the user with it on every apply.
+          # bezisync-lab reads it (with polaris-bezisync) when it registers
+          # the lake's BeziSync destinations.
           if ! kubectl get secret rustfs-bezisync -n rustfs >/dev/null 2>&1; then
             echo "→ generating secret/rustfs-bezisync (first deploy)"
             kubectl create secret generic rustfs-bezisync -n rustfs \
               --from-literal=access-key=bezisync \
               --from-literal=secret-key="$(openssl rand -hex 24)"
           fi
-          # Lakekeeper (rustfs/lakekeeper.yaml): its Postgres password +
-          # secret-store encryption key, and its own RustFS user (policy
-          # lakekeeper-warehouse, s3://lakehouse only). Generated ONCE:
-          # encryption-key protects the warehouse credential stored in
-          # Lakekeeper's DB, and db-password must keep matching the volume.
-          if ! kubectl get secret lakekeeper-secrets -n rustfs >/dev/null 2>&1; then
-            echo "→ generating secret/lakekeeper-secrets (first deploy)"
-            kubectl create secret generic lakekeeper-secrets -n rustfs \
-              --from-literal=db-password="$(openssl rand -hex 24)" \
-              --from-literal=encryption-key="$(openssl rand -hex 32)"
-          fi
-          if ! kubectl get secret rustfs-lakekeeper -n rustfs >/dev/null 2>&1; then
-            echo "→ generating secret/rustfs-lakekeeper (first deploy)"
-            kubectl create secret generic rustfs-lakekeeper -n rustfs \
-              --from-literal=access-key=lakekeeper \
-              --from-literal=secret-key="$(openssl rand -hex 24)"
-          fi
-          # BeziSync login for the rustfs-bootstrap Job: copy the bootstrap
-          # admin from BeziSync's own Secret (ns bezisync) — no API token.
-          # Re-copied every run, so a rotated bootstrap password follows;
-          # no BeziSync install -> Secret removed -> registration skipped.
-          BZ_NS=bezisync; BZ_SECRET=bezisync-secrets
-          BZ_PASS="$(kubectl get secret "$BZ_SECRET" -n "$BZ_NS" -o jsonpath='{.data.BEZISYNC_BOOTSTRAP_ADMIN_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || true)"
-          if [ -n "$BZ_PASS" ]; then
-            # email: Secret key, else the api Deployment's env, else BeziSync's default
-            BZ_EMAIL="$(kubectl get secret "$BZ_SECRET" -n "$BZ_NS" -o jsonpath='{.data.BEZISYNC_BOOTSTRAP_ADMIN_EMAIL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
-            [ -n "$BZ_EMAIL" ] || BZ_EMAIL="$(kubectl get deploy bezisync-api -n "$BZ_NS" -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="BEZISYNC_BOOTSTRAP_ADMIN_EMAIL")].value}' 2>/dev/null || true)"
-            [ -n "$BZ_EMAIL" ] || BZ_EMAIL=admin@bezisync.local
-            echo "→ BeziSync found: registration will sign in as ${BZ_EMAIL}"
-            kubectl create secret generic bezisync-login -n rustfs \
-              --from-literal=email="${BZ_EMAIL}" \
-              --from-literal=password="${BZ_PASS}" \
-              --dry-run=client -o yaml | kubectl apply -f -
-          else
-            echo "→ no BeziSync bootstrap admin in ${BZ_NS}/${BZ_SECRET}: registration will skip"
-            kubectl delete secret bezisync-login -n rustfs --ignore-not-found
-          fi
-          unset BZ_PASS
+          # Polaris (polaris/): everything generated in-cluster ONCE, never
+          # rotated by CI. polaris-db must keep matching the initialised
+          # volume; polaris-root takes effect on the realm's first bootstrap
+          # only; polaris-token-key signs access tokens; the duckdb/bezisync
+          # principals' credentials are pinned to their Secrets by
+          # Job/polaris-setup on every apply. rustfs-polaris is Polaris's own
+          # RustFS user (policy polaris-warehouse, s3://lakehouse only),
+          # upserted by Job/rustfs-bootstrap.
+          gen_secret() {   # gen_secret <ns> <name> <key=value>...
+            local ns="$1" name="$2"; shift 2
+            kubectl get secret "$name" -n "$ns" >/dev/null 2>&1 && return 0
+            echo "→ generating secret/$name in $ns (first deploy)"
+            local args=(); for kv in "$@"; do args+=(--from-literal="$kv"); done
+            kubectl create secret generic "$name" -n "$ns" "${args[@]}"
+          }
+          # copy_secret <name> <from-ns> <to-ns>: re-copied every run, so the
+          # copy always follows the source
+          copy_secret() {
+            kubectl get secret "$1" -n "$2" -o json \
+              | jq --arg ns "$3" '{apiVersion, kind, type, data, metadata: {name: .metadata.name, namespace: $ns}}' \
+              | kubectl apply -f -
+          }
+          gen_secret rustfs rustfs-polaris access-key=polaris secret-key="$(openssl rand -hex 24)"
+          POLARIS_DB_PASSWORD="$(openssl rand -hex 24)"
+          gen_secret polaris polaris-db username=polaris password="${POLARIS_DB_PASSWORD}" \
+            jdbcUrl=jdbc:postgresql://polaris-db:5432/polaris
+          unset POLARIS_DB_PASSWORD
+          gen_secret polaris polaris-token-key symmetric-key="$(openssl rand -hex 32)"
+          gen_secret polaris polaris-root client-id=root client-secret="$(openssl rand -hex 24)"
+          gen_secret polaris polaris-duckdb client-id=duckdb client-secret="$(openssl rand -hex 24)"
+          gen_secret polaris polaris-bezisync client-id=bezisync client-secret="$(openssl rand -hex 24)"
+          # Polaris Console login (principal `admin`, role service_admin). Read it with:
+          #   kubectl get secret polaris-admin -n polaris -o jsonpath='{.data.client-secret}' | base64 -d
+          gen_secret polaris polaris-admin client-id=admin client-secret="$(openssl rand -hex 24)"
+          copy_secret rustfs-polaris rustfs polaris      # Polaris's metadata writes
+          copy_secret polaris-duckdb polaris analytics   # duckdb ATTACH lakehouse
+          # BeziSync destinations are registered by bezisync-lab now: drop the
+          # admin-login copies earlier deploys left for the registration Jobs.
+          for NS in rustfs polaris; do
+            kubectl delete secret bezisync-login -n "$NS" --ignore-not-found
+          done
 
       - name: Kustomize Build
         run: |
           echo "▶ Building ${MODULE_PATH} (tailscale_expose=${TAILSCALE_EXPOSE})"
-          # kubectl kustomize --enable-helm (rustfs/ inflates a helm chart),
+          # kubectl kustomize --enable-helm (rustfs/ and polaris/ inflate helm charts),
           # plus the tailscale/<svc> components picked by tailscale_expose
           bash scripts/build-manifests.sh "${MODULE_PATH}" "${TAILSCALE_EXPOSE}" > /tmp/built.yaml
           echo "Built $(grep -c "^kind:" /tmp/built.yaml) resources"
@@ -398,26 +481,35 @@ jobs:
                 "."|all|rustfs) kubectl delete job/rustfs-bootstrap -n rustfs --ignore-not-found ;;
               esac
               case "$TARGET" in
+                "."|all|polaris) kubectl delete job/polaris-setup -n polaris --ignore-not-found ;;
+              esac
+              case "$TARGET" in
                 "."|all|metabase) kubectl delete job/metabase-register -n analytics --ignore-not-found ;;
               esac
               kubectl apply -f /tmp/built.yaml
               case "$TARGET" in
                 "."|all|rustfs)
-                  # default bucket + table bucket, the BeziSync RustFS user,
-                  # and the BeziSync destination (skips when it exists or
-                  # BeziSync isn't installed) — rustfs/bootstrap-job.yaml
-                  wait_job rustfs rustfs-bootstrap 1800 "buckets + Lakekeeper warehouse + BeziSync users/destinations"
-                  # duckdb attaches the Lakekeeper `lakehouse` warehouse only if
-                  # it was reachable when the pod started (duckdb/configmap.yaml).
+                  # `datalake` table bucket + plain `lakehouse` bucket and the
+                  # BeziSync/Polaris RustFS users — rustfs/bootstrap-job.yaml
+                  wait_job rustfs rustfs-bootstrap 1800 "buckets + BeziSync/Polaris users"
+                  ;;
+              esac
+              case "$TARGET" in
+                "."|all|polaris)
+                  # catalog `lakehouse`, roles, grants, principals —
+                  # polaris/setup-job.yaml
+                  wait_job polaris polaris-setup 1200 "lakehouse catalog + principals"
+                  # duckdb attaches the Polaris `lakehouse` catalog only if it
+                  # was reachable when the pod started (duckdb/configmap.yaml).
                   # Restart duckdb once, now that the Job above ensured the
-                  # warehouse, unless every duckdb pod's init container logged
+                  # catalog, unless every duckdb pod's init container logged
                   # "will be attached". That covers pods that started before
-                  # the warehouse existed AND pods still running an older init
+                  # the catalog existed AND pods still running an older init
                   # script (ConfigMap edits don't roll pods by themselves).
                   if kubectl get deploy/duckdb -n analytics >/dev/null 2>&1; then
                     LH_MISSING=""
                     for POD in $(kubectl get pods -n analytics -l app=duckdb -o name); do
-                      if ! kubectl logs -n analytics "$POD" -c generate-duckflight-config 2>/dev/null | grep -q "will be attached"; then
+                      if ! kubectl logs -n analytics "$POD" -c generate-duckflight-config 2>/dev/null | grep -q "Polaris catalog .* will be attached"; then
                         LH_MISSING=1
                       fi
                     done
@@ -463,10 +555,11 @@ jobs:
               # space-joined string that word-split into broken invocations.
               case "$TARGET" in
                 "."|all)
-                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "deployment/lakekeeper -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics" "deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics" "deployment/metabase -n analytics")
+                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "deployment/polaris -n polaris" "deployment/polaris-console -n polaris" "cronjob/iceberg-maintenance-daily -n analytics" "deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics" "deployment/metabase -n analytics")
                   ;;
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
-                rustfs) TARGETS=("statefulset/rustfs -n rustfs" "deployment/lakekeeper -n rustfs") ;;
+                rustfs) TARGETS=("statefulset/rustfs -n rustfs") ;;
+                polaris) TARGETS=("deployment/polaris -n polaris" "deployment/polaris-console -n polaris") ;;
                 maintenance) TARGETS=("cronjob/iceberg-maintenance-daily -n analytics") ;;
                 generator)
                   TARGETS=("deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics")
@@ -489,7 +582,8 @@ jobs:
               case "$TARGET" in
                 "."|all) TARGETS=("deployment/duckdb -n analytics" "deployment/generator-stream -n analytics") ;;
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
-                rustfs) TARGETS=("statefulset/rustfs -n rustfs" "deployment/lakekeeper -n rustfs" "job/rustfs-bootstrap -n rustfs") ;;
+                rustfs) TARGETS=("statefulset/rustfs -n rustfs" "job/rustfs-bootstrap -n rustfs") ;;
+                polaris) TARGETS=("deployment/polaris -n polaris" "statefulset/polaris-db -n polaris" "job/polaris-setup -n polaris" "deployment/polaris-console -n polaris") ;;
                 generator) TARGETS=("deployment/generator-stream -n analytics") ;;
                 metabase) TARGETS=("deployment/metabase -n analytics" "statefulset/metabase-db -n analytics") ;;
                 # maintenance has no long-running pod — its evidence lives in

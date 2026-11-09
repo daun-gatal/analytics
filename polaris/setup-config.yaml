@@ -1,0 +1,231 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: polaris-setup-config
+  namespace: polaris
+data:
+  #
+  # Run by Job/polaris-setup (setup-job.yaml) on every polaris/all apply:
+  #
+  #   setup-polaris.py      (container `catalog`)
+  #     ensure catalog `lakehouse`, its roles/grants and the principals
+  #     below, with credentials pinned to their CI-generated Secrets.
+  #
+  # Principals -> principal role -> catalog role (privileges in the script):
+  #   duckdb    lakehouse_reader -> lakehouse.reader  read only
+  #   bezisync  lakehouse_writer -> lakehouse.writer  create + commit, no drop
+  #             (the BeziSync `analytics-lakehouse` destination is registered by
+  #             bezisync-lab, which reads Secret/polaris-bezisync)
+  #   admin     service_admin (built-in)              full admin: the console
+  #                                                   login (Secret/polaris-admin)
+  #
+  # The `lakehouse` bucket and Polaris's RustFS user `polaris` are created
+  # by Job/rustfs-bootstrap (rustfs module), which owns buckets and IAM.
+  #
+  POLARIS_URL: http://polaris:8181
+  POLARIS_REALM: POLARIS
+  POLARIS_CATALOG: lakehouse
+  LAKEHOUSE_BUCKET: lakehouse
+  AWS_DEFAULT_REGION: us-east-1
+  # S3 endpoint stored in the catalog and handed to every client by
+  # loadTable: the FQDN, since clients run in other namespaces
+  RUSTFS_CLUSTER_ENDPOINT: http://rustfs-svc.rustfs.svc.cluster.local:9000
+
+  setup-polaris.py: |
+    """Ensure the Polaris `lakehouse` catalog, its roles and its principals.
+
+    Idempotent, re-applied on every deploy (like iam.sh for RustFS):
+      * catalog POLARIS_CATALOG on s3://LAKEHOUSE_BUCKET (RustFS, path-style,
+        no STS: clients bring their own S3 keys) - created, or its storage
+        config updated when it drifted
+      * catalog roles + their grants, principal roles, and the principal ->
+        principal role -> catalog role chain for every PRINCIPALS entry
+      * each principal's client id/secret pinned to the CI-generated Secret
+        (reset only when the stored pair no longer signs in)
+
+    Exit 0 when everything is in place; exit 1 otherwise, since the catalog
+    and its logins are part of the lake this deploy promises.
+    """
+    import json
+    import os
+    import sys
+    import time
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    env = os.environ.get
+    base = env("POLARIS_URL", "").rstrip("/")
+    realm = env("POLARIS_REALM", "POLARIS")
+    catalog = env("POLARIS_CATALOG", "lakehouse")
+    bucket = env("LAKEHOUSE_BUCKET", "lakehouse")
+    mgmt = f"{base}/api/management/v1"
+    token_url = f"{base}/api/catalog/v1/oauth/tokens"
+
+    # Privileges per catalog role. No DROP anywhere: like the RustFS policies,
+    # writers create and commit, they never delete tables or namespaces.
+    READ = [
+        "CATALOG_READ_PROPERTIES",
+        "NAMESPACE_LIST", "NAMESPACE_READ_PROPERTIES",
+        "TABLE_LIST", "TABLE_READ_PROPERTIES", "TABLE_READ_DATA",
+        "VIEW_LIST", "VIEW_READ_PROPERTIES",
+    ]
+    WRITE = READ + [
+        "NAMESPACE_CREATE",
+        "TABLE_CREATE", "TABLE_WRITE_PROPERTIES", "TABLE_WRITE_DATA",
+    ]
+    CATALOG_ROLES = {"reader": READ, "writer": WRITE}
+
+    # (principal, catalog role, env prefix); credentials come from
+    # <PREFIX>_CLIENT_ID/_SECRET. Catalog role None = Polaris's built-in
+    # principal role `service_admin` (manages catalogs, principals, roles,
+    # and is catalog_admin on every catalog) - the console login, so the
+    # realm's root credentials never go into a browser.
+    PRINCIPALS = [
+        ("duckdb", "reader", "POLARIS_DUCKDB"),
+        ("bezisync", "writer", "POLARIS_BEZISYNC"),
+        ("admin", None, "POLARIS_ADMIN"),
+    ]
+
+
+    class Refused(Exception):
+        def __init__(self, code, msg):
+            super().__init__(msg)
+            self.code = code
+
+
+    def request(method, url, body=None, token=None, form=None, timeout=30):
+        headers = {"Accept": "application/json", "Polaris-Realm": realm}
+        data = None
+        if form is not None:
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+            data = urllib.parse.urlencode(form).encode()
+        elif body is not None:
+            headers["Content-Type"] = "application/json"
+            data = json.dumps(body).encode()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, method=method, headers=headers, data=data)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:600].decode("utf-8", "replace")
+            raise Refused(e.code, f"{method} {url} -> HTTP {e.code}: {detail}") from None
+
+
+    def sign_in(client_id, client_secret):
+        return request("POST", token_url, form={
+            "grant_type": "client_credentials", "client_id": client_id,
+            "client_secret": client_secret, "scope": "PRINCIPAL_ROLE:ALL"})["access_token"]
+
+
+    def get(path, token):
+        try:
+            return request("GET", mgmt + path, token=token)
+        except Refused as e:
+            if e.code == 404:
+                return None
+            raise
+
+
+    def need(name):
+        value = env(name)
+        if not value:
+            print(f"❌ {name} is not set")
+            sys.exit(1)
+        return value
+
+
+    root_id, root_secret = need("POLARIS_ROOT_CLIENT_ID"), need("POLARIS_ROOT_CLIENT_SECRET")
+
+    # Polaris starts alongside this Job: wait up to 10 min for a root token.
+    deadline = time.time() + 600
+    while True:
+        try:
+            token = sign_in(root_id, root_secret)
+            break
+        except Exception as e:  # not up yet, or (re)starting
+            if time.time() > deadline:
+                print(f"❌ Polaris at {base}: no root token after 10 min ({e})")
+                sys.exit(1)
+            time.sleep(5)
+
+    try:
+        # 1. catalog
+        storage = {
+            "storageType": "S3",
+            "allowedLocations": [f"s3://{bucket}"],
+            "endpoint": need("RUSTFS_CLUSTER_ENDPOINT"),
+            "pathStyleAccess": True,
+            "region": env("AWS_DEFAULT_REGION", "us-east-1"),
+            # RustFS has no STS: Polaris vends no credentials, every client
+            # brings its own scoped RustFS user
+            "stsUnavailable": True,
+        }
+        properties = {"default-base-location": f"s3://{bucket}"}
+        current = get(f"/catalogs/{catalog}", token)
+        if current is None:
+            request("POST", mgmt + "/catalogs", token=token, body={"catalog": {
+                "type": "INTERNAL", "name": catalog,
+                "properties": properties, "storageConfigInfo": storage}})
+            print(f"✅ Polaris: created catalog '{catalog}' on s3://{bucket}")
+        else:
+            have = current.get("storageConfigInfo") or {}
+            if any(have.get(k) != v for k, v in storage.items()):
+                request("PUT", f"{mgmt}/catalogs/{catalog}", token=token, body={
+                    "currentEntityVersion": current["entityVersion"],
+                    "properties": {**(current.get("properties") or {}), **properties},
+                    "storageConfigInfo": storage})
+                print(f"✅ Polaris: updated catalog '{catalog}' storage config")
+            else:
+                print(f"⏭  Polaris: catalog '{catalog}' already up to date")
+
+        # 2. catalog roles + grants (granting an existing privilege is a no-op)
+        for role, privileges in CATALOG_ROLES.items():
+            if get(f"/catalogs/{catalog}/catalog-roles/{role}", token) is None:
+                request("POST", f"{mgmt}/catalogs/{catalog}/catalog-roles", token=token,
+                        body={"catalogRole": {"name": role}})
+            for p in privileges:
+                request("PUT", f"{mgmt}/catalogs/{catalog}/catalog-roles/{role}/grants",
+                        token=token, body={"grant": {"type": "catalog", "privilege": p}})
+            print(f"✅ Polaris: catalog role '{catalog}.{role}' has {len(privileges)} privileges")
+
+        # 3. principals: principal -> principal role -> catalog role
+        for name, role, prefix in PRINCIPALS:
+            client_id, client_secret = need(f"{prefix}_CLIENT_ID"), need(f"{prefix}_CLIENT_SECRET")
+            if role is None:
+                principal_role, granted = "service_admin", "service_admin"
+            else:
+                principal_role, granted = f"{catalog}_{role}", f"{catalog}.{role}"
+                if get(f"/principal-roles/{principal_role}", token) is None:
+                    request("POST", mgmt + "/principal-roles", token=token,
+                            body={"principalRole": {"name": principal_role}})
+                request("PUT", f"{mgmt}/principal-roles/{principal_role}/catalog-roles/{catalog}",
+                        token=token, body={"catalogRole": {"name": role}})
+
+            if get(f"/principals/{name}", token) is None:
+                request("POST", mgmt + "/principals", token=token, body={
+                    "principal": {"name": name}, "credentialRotationRequired": False})
+                print(f"✅ Polaris: created principal '{name}'")
+            try:
+                sign_in(client_id, client_secret)
+            except Refused:
+                # pin the credentials to the CI-generated Secret
+                request("POST", f"{mgmt}/principals/{name}/reset", token=token,
+                        body={"clientId": client_id, "clientSecret": client_secret})
+                print(f"✅ Polaris: principal '{name}' credentials set from its Secret")
+            request("PUT", f"{mgmt}/principals/{name}/principal-roles", token=token,
+                    body={"principalRole": {"name": principal_role}})
+
+            # verify end to end: the principal signs in and sees the catalog
+            # (the admin also lists principals, as the console does)
+            t = sign_in(client_id, client_secret)
+            request("GET", f"{base}/api/catalog/v1/config?warehouse={catalog}", token=t)
+            if role is None:
+                request("GET", mgmt + "/principals", token=t)
+            print(f"✅ Polaris: principal '{name}' -> {principal_role} -> {granted} works")
+    except Refused as e:
+        print(f"❌ Polaris: {e}")
+        sys.exit(1)

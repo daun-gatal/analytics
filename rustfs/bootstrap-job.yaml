@@ -30,11 +30,7 @@ spec:
       #   1. bootstrap         `datalake` table bucket (every node) + plain
       #                        `lakehouse` bucket (bootstrap.sh)
       #   2. iam               RustFS policies + users for BeziSync and
-      #                        Lakekeeper (iam.sh)
-      #   3. lakekeeper-setup  bootstrap Lakekeeper + `lakehouse` warehouse
-      #                        if missing (setup-lakekeeper.py)
-      #   4. bezisync-register create the BeziSync destinations if missing
-      #                        (skips when they exist / BeziSync is absent)
+      #                        Polaris (iam.sh, rustfs/iam-config.yaml)
       initContainers:
         - name: bootstrap
           # curl >= 7.76 is required for --aws-sigv4 (pinned 8.x)
@@ -68,13 +64,14 @@ spec:
             - name: config
               mountPath: /config
               readOnly: true
+      containers:
         - name: iam
           image: rustfs/rc:v0.1.37
           imagePullPolicy: IfNotPresent
-          command: ["sh", "/bezisync/iam.sh"]
+          command: ["sh", "/iam/iam.sh"]
           envFrom:
             - configMapRef:
-                name: rustfs-bezisync-config
+                name: rustfs-iam-config
             - secretRef:
                 name: rustfs-credentials   # root keys, created by CI
           env:
@@ -90,15 +87,15 @@ spec:
                 secretKeyRef:
                   name: rustfs-bezisync
                   key: secret-key
-            - name: LAKEKEEPER_S3_ACCESS_KEY
+            - name: POLARIS_S3_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
-                  name: rustfs-lakekeeper
+                  name: rustfs-polaris
                   key: access-key
-            - name: LAKEKEEPER_S3_SECRET_KEY
+            - name: POLARIS_S3_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: rustfs-lakekeeper
+                  name: rustfs-polaris
                   key: secret-key
           securityContext:
             allowPrivilegeEscalation: false
@@ -117,118 +114,19 @@ spec:
               cpu: 100m
               memory: 64Mi
           volumeMounts:
-            - name: bezisync
-              mountPath: /bezisync
+            - name: iam
+              mountPath: /iam
               readOnly: true
             - name: rc-home
               mountPath: /home/rc
-        - name: lakekeeper-setup
-          image: python:3.13.18-alpine
-          imagePullPolicy: IfNotPresent
-          command: ["python", "-I", "/bezisync/setup-lakekeeper.py"]
-          envFrom:
-            - configMapRef:
-                name: rustfs-bootstrap-config   # LAKEHOUSE_BUCKET, AWS_DEFAULT_REGION
-            - configMapRef:
-                name: rustfs-bezisync-config    # LAKEKEEPER_URL/_WAREHOUSE, endpoint
-          env:
-            - name: PYTHONUNBUFFERED
-              value: '1'
-            - name: LAKEKEEPER_S3_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rustfs-lakekeeper
-                  key: access-key
-            - name: LAKEKEEPER_S3_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rustfs-lakekeeper
-                  key: secret-key
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            runAsNonRoot: true
-            runAsUser: 65534   # nobody
-            runAsGroup: 65534
-            capabilities:
-              drop:
-                - ALL
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
-          volumeMounts:
-            - name: bezisync
-              mountPath: /bezisync
-              readOnly: true
-      containers:
-        - name: bezisync-register
-          image: python:3.13.18-alpine
-          imagePullPolicy: IfNotPresent
-          command: ["python", "-I", "/bezisync/register-bezisync.py"]
-          envFrom:
-            - configMapRef:
-                name: rustfs-bootstrap-config   # BUCKET_NAME, AWS_DEFAULT_REGION
-            - configMapRef:
-                name: rustfs-bezisync-config
-          env:
-            - name: PYTHONUNBUFFERED
-              value: '1'
-            - name: BEZISYNC_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rustfs-bezisync
-                  key: access-key
-            - name: BEZISYNC_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rustfs-bezisync
-                  key: secret-key
-            # BeziSync's bootstrap admin, copied by CI from BeziSync's own
-            # Secret (no Secret -> BeziSync not installed -> skip)
-            - name: BEZISYNC_LOGIN_EMAIL
-              valueFrom:
-                secretKeyRef:
-                  name: bezisync-login
-                  key: email
-                  optional: true
-            - name: BEZISYNC_LOGIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: bezisync-login
-                  key: password
-                  optional: true
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            runAsNonRoot: true
-            runAsUser: 65534   # nobody
-            runAsGroup: 65534
-            capabilities:
-              drop:
-                - ALL
-          resources:
-            requests:
-              cpu: 10m
-              memory: 32Mi
-            limits:
-              cpu: 200m
-              memory: 128Mi
-          volumeMounts:
-            - name: bezisync
-              mountPath: /bezisync
-              readOnly: true
       volumes:
         - name: config
           configMap:
             name: rustfs-bootstrap-config
             defaultMode: 0555
-        - name: bezisync
+        - name: iam
           configMap:
-            name: rustfs-bezisync-config
+            name: rustfs-iam-config
             defaultMode: 0555
         - name: rc-home
           emptyDir: {}

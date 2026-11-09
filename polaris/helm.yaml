@@ -1,0 +1,170 @@
+# Apache Polaris — Iceberg REST catalog `lakehouse` on RustFS (s3://lakehouse)
+#
+#   catalog URI   http://polaris.polaris.svc.cluster.local:8181/api/catalog
+#   token URL     http://polaris.polaris.svc.cluster.local:8181/api/catalog/v1/oauth/tokens
+#   warehouse     lakehouse  (catalog created by Job/polaris-setup)
+#
+# Auth: Polaris's own principals (OAuth2 client credentials, scope
+# PRINCIPAL_ROLE:ALL) and role-based grants — see setup-config.yaml.
+#
+# Storage: RustFS has no STS, so the catalog is created with
+# stsUnavailable: Polaris vends NO credentials (a vending request is
+# refused with HTTP 400). Polaris writes table metadata with its own
+# RustFS user (Secret/rustfs-polaris); every client reads and writes data
+# files with its own scoped RustFS user.
+#
+# Secrets (ns polaris, generated once by CI — see deploy.yaml):
+#   polaris-db         username/password/jdbcUrl of Postgres (postgres.yaml)
+#   polaris-root       client-id/client-secret of the realm's root principal
+#   polaris-token-key  symmetric-key signing Polaris's access tokens
+#   rustfs-polaris     access-key/secret-key, copied from ns rustfs
+
+persistence:
+  type: relational-jdbc
+  relationalJdbc:
+    secret:
+      name: polaris-db   # keys: username, password, jdbcUrl
+    # currentSchema=POLARIS_SCHEMA (chart default) folds to polaris_schema;
+    # the create-schema init container below makes sure it exists.
+
+realmContext:
+  realms:
+    - POLARIS
+
+features:
+  SUPPORTED_CATALOG_STORAGE_TYPES:
+    - S3
+
+# Fixed signing key (not a per-pod random one): tokens stay valid across
+# restarts and replicas.
+authentication:
+  tokenBroker:
+    type: symmetric-key
+    secret:
+      name: polaris-token-key
+      symmetricKey:
+        secretKey: symmetric-key
+
+# With stsUnavailable, Polaris's own metadata reads/writes use the default
+# AWS credential chain — storage.secret alone is NOT enough (fails with
+# "Unable to load credentials from any of the providers in the chain").
+extraEnv:
+  - name: AWS_ACCESS_KEY_ID
+    valueFrom:
+      secretKeyRef:
+        name: rustfs-polaris
+        key: access-key
+  - name: AWS_SECRET_ACCESS_KEY
+    valueFrom:
+      secretKeyRef:
+        name: rustfs-polaris
+        key: secret-key
+  - name: AWS_REGION
+    value: us-east-1
+
+# Runs on every pod start, before the server. Both steps are idempotent
+# (validated: a second bootstrap prints "already bootstrapped; skipping"
+# and exits 0), so Polaris never starts against an un-bootstrapped realm.
+extraInitContainers:
+  - name: create-schema
+    image: postgres:18.6-alpine
+    command:
+      - sh
+      - -c
+      - |
+        for i in $(seq 1 60); do
+          psql -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA IF NOT EXISTS polaris_schema' && exit 0
+          echo "waiting for polaris-db ($i/60)"; sleep 5
+        done
+        exit 1
+    env:
+      - name: PGHOST
+        value: polaris-db
+      - name: PGDATABASE
+        value: polaris
+      - name: PGUSER
+        valueFrom:
+          secretKeyRef:
+            name: polaris-db
+            key: username
+      - name: PGPASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: polaris-db
+            key: password
+    securityContext: &init-sc
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      runAsUser: 70     # postgres (alpine)
+      runAsGroup: 70
+      capabilities:
+        drop: ["ALL"]
+    resources:
+      requests:
+        cpu: 10m
+        memory: 16Mi
+      limits:
+        memory: 64Mi
+  - name: bootstrap-realm
+    image: apache/polaris-admin-tool:1.8.0
+    # -c <realm>,<client-id>,<client-secret> — takes effect on the FIRST
+    # bootstrap only; the root credentials are fixed from then on.
+    args:
+      - bootstrap
+      - -r
+      - POLARIS
+      - -c
+      - POLARIS,$(POLARIS_ROOT_CLIENT_ID),$(POLARIS_ROOT_CLIENT_SECRET)
+    env:
+      - name: POLARIS_ROOT_CLIENT_ID
+        valueFrom:
+          secretKeyRef:
+            name: polaris-root
+            key: client-id
+      - name: POLARIS_ROOT_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: polaris-root
+            key: client-secret
+      - name: polaris.persistence.type
+        value: relational-jdbc
+      - name: quarkus.datasource.jdbc.url
+        valueFrom:
+          secretKeyRef:
+            name: polaris-db
+            key: jdbcUrl
+      - name: quarkus.datasource.username
+        valueFrom:
+          secretKeyRef:
+            name: polaris-db
+            key: username
+      - name: quarkus.datasource.password
+        valueFrom:
+          secretKeyRef:
+            name: polaris-db
+            key: password
+      - name: quarkus.datasource.jdbc.additional-jdbc-properties.currentSchema
+        value: POLARIS_SCHEMA
+    securityContext:
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      runAsUser: 10000  # same as the server image
+      capabilities:
+        drop: ["ALL"]
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
+
+# No Prometheus operator in this cluster
+serviceMonitor:
+  enabled: false
