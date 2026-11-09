@@ -95,6 +95,7 @@ sequenceDiagram
     DUCK->>DUCK: SET memory_limit = 85% of request<br/>(Downward API env → getenv())
     DUCK->>DUCK: CREATE SECRET rustfs_s3<br/>all values via getenv()
     DUCK->>RFS: ATTACH datalake<br/>Iceberg REST endpoint from env
+    Note over INIT,DUCK: lakehouse: the init container probes Lakekeeper's<br/>warehouse (≤90s) and writes the ATTACH or a no-op,<br/>which init.sql .reads — a Lakekeeper outage never<br/>stops duckdb from starting
     DUCK->>DUCK: duckflight_pg_serve 0.0.0.0:5433
     DUCK->>DUCK: duckflight_flight_serve 0.0.0.0:31337
     Note over DUCK: Postgres wire + FlightSQL live,<br/>lake is one query away
@@ -248,7 +249,8 @@ DuckDB's `ATTACH 'datalake'` and the generators' `create_namespace_if_not_exists
 
 `rustfs/lakekeeper.yaml` runs [Lakekeeper](https://docs.lakekeeper.io) **v0.15.0**, an Iceberg REST catalog, in ns `rustfs` with its own Postgres (`lakekeeper-db`, Longhorn 5Gi). It serves the warehouse **`lakehouse`** on the plain bucket **`s3://lakehouse`**. RustFS is just object storage there. The older `datalake` table bucket keeps RustFS's built-in catalog, untouched.
 
-* **Catalog URI:** `http://lakekeeper.rustfs.svc.cluster.local:8181/catalog`, warehouse `lakehouse`. Use it from PyIceberg, Spark, DuckDB (`ATTACH 'lakehouse' AS lakehouse (TYPE ICEBERG, URI '…/catalog', AUTHORIZATION_TYPE 'none')` plus an S3 secret) or BeziSync.
+* **Catalog URI:** `http://lakekeeper.rustfs.svc.cluster.local:8181/catalog`, warehouse `lakehouse`. Use it from PyIceberg, Spark, DuckDB or BeziSync.
+* **In DuckDB / Metabase:** duckdb attaches it as catalog **`lakehouse`** when the warehouse is reachable at pod start (`LAKEKEEPER_URL` / `LAKEKEEPER_WAREHOUSE` in `duckdb-settings`). The init container probes `…/catalog/v1/config?warehouse=lakehouse` for up to 90 s, then writes either the `ATTACH` or a no-op that `init.sql` `.read`s, so a Lakekeeper outage never keeps duckdb (and `datalake`) down. If duckdb started without it (a fresh deploy, before the bootstrap Job created the warehouse), CI restarts duckdb once after `rustfs-bootstrap`. Query it over DuckFlight with **dbname `lakehouse`**, i.e. Metabase database **`Lakehouse`**.
 * **Why:** a real REST catalog gives upserts and table format v3 (BeziSync's RustFS preset is append-only, v2), and avoids the built-in catalog's node-sync issue above.
 * **Auth:** none (authz allow-all). Any pod in the cluster can use the catalog. Lakekeeper vends **no** credentials (STS and remote signing are off), so every client reads and writes data files with its own scoped RustFS user.
 * **Setup:** `Job/rustfs-bootstrap` creates the bucket, Lakekeeper's RustFS user (`lakekeeper`, policy `lakekeeper-warehouse`: object access on `lakehouse` only), bootstraps Lakekeeper once, and creates the warehouse if it's missing.
@@ -333,8 +335,15 @@ kubectl logs -f job/generator-manual -n analytics
 * **Access:** `http://metabase` on the tailnet. The first visit runs Metabase's setup wizard (admin account).
 
 **Auto-setup + registration (no API key):** every metabase apply runs `Job/metabase-register` (`metabase/register-*.yaml`). It waits for Metabase, then:
-* **fresh Metabase:** completes the setup wizard through the API with the admin from `Secret/metabase-admin`, then adds DuckDB as database **`Lake`** with the settings below and scans turned off;
-* **already set up:** signs in as that admin and adds `Lake` only when it's missing (an existing `Lake` is never modified);
+* **fresh Metabase:** completes the setup wizard through the API with the admin from `Secret/metabase-admin`, then adds the DuckDB databases below with scans turned off;
+* **already set up:** signs in as that admin and adds each one only when it's missing (existing ones are never modified);
+
+| Metabase database | DuckFlight dbname | Catalog |
+|---|---|---|
+| `Lake` | `datalake` | RustFS built-in catalog (`datalake` table bucket): generator / maintenance tables |
+| `Lakehouse` | `lakehouse` | Lakekeeper (`lakehouse` bucket): BeziSync's `lakehouse` destination |
+
+(`METABASE_DATABASES` in `metabase/register-config.yaml`.)
 * **set up by hand with another admin:** sign-in fails → warning, skip. To adopt that instance, put its admin email/password into `Secret/metabase-admin` and re-apply.
 
 `Secret/metabase-admin` is generated once by CI (email `admin@analytics.local`, random password) and never overwritten. Get the password to sign in:

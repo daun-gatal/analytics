@@ -407,13 +407,35 @@ jobs:
                   # and the BeziSync destination (skips when it exists or
                   # BeziSync isn't installed) — rustfs/bootstrap-job.yaml
                   wait_job rustfs rustfs-bootstrap 1800 "buckets + Lakekeeper warehouse + BeziSync users/destinations"
+                  # duckdb attaches the Lakekeeper `lakehouse` warehouse only if
+                  # it was reachable when the pod started (duckdb/configmap.yaml).
+                  # On a fresh deploy duckdb can start before the Job above
+                  # created the warehouse: its init container then logged
+                  # "starting without it" — restart duckdb once, now that the
+                  # warehouse exists. No restart when it's already attached.
+                  if kubectl get deploy/duckdb -n analytics >/dev/null 2>&1; then
+                    LH_MISSING=""
+                    for POD in $(kubectl get pods -n analytics -l app=duckdb -o name); do
+                      if kubectl logs -n analytics "$POD" -c generate-duckflight-config 2>/dev/null | grep -q "starting without it"; then
+                        LH_MISSING=1
+                      fi
+                    done
+                    if [ -n "$LH_MISSING" ]; then
+                      echo "▶ duckdb started without the lakehouse catalog — restarting it to attach"
+                      kubectl rollout restart deployment/duckdb -n analytics
+                      kubectl rollout status deployment/duckdb -n analytics --timeout=300s || true
+                    else
+                      echo "✅ duckdb already has the lakehouse catalog attached"
+                    fi
+                  fi
                   ;;
               esac
               case "$TARGET" in
                 "."|all|metabase)
-                  # first-time Metabase setup + DuckDB as `Lake` (skips when
-                  # it exists); waits for Metabase itself first
-                  wait_job analytics metabase-register 1200 "Metabase setup + DuckDB database"
+                  # first-time Metabase setup + DuckDB as `Lake` and
+                  # `Lakehouse` (each skipped when it exists); waits for
+                  # Metabase itself first
+                  wait_job analytics metabase-register 1200 "Metabase setup + Lake/Lakehouse databases"
                   ;;
               esac
               echo "▶ Syncing duckdb with deployed rustfs"

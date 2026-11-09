@@ -19,3 +19,8 @@ data:
   # DuckFlight endpoints (must match the ports declared in service.yaml)
   DUCKFLIGHT_PG_PORT: '5433'
   DUCKFLIGHT_FLIGHT_PORT: '31337'
+  #
+  # Lakekeeper Iceberg REST catalog (rustfs/lakekeeper.yaml) — attached as
+  # catalog `lakehouse` when its warehouse is reachable at pod start.
+  LAKEKEEPER_URL: http://lakekeeper.rustfs.svc.cluster.local:8181
+  LAKEKEEPER_WAREHOUSE: lakehouse
