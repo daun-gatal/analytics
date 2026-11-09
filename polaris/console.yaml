@@ -1,8 +1,10 @@
 # Polaris Console — web UI for Polaris (apache/polaris-tools, console/).
 #
-# Upstream publishes no image: CI builds it from the commit pinned as the
-# image tag in kustomization.yaml (build-console job, deploy.yaml) and pushes
-# ghcr.io/daun-gatal/analytics/polaris-console:<commit>.
+# Upstream publishes no image: the "Polaris Console image" workflow
+# (.github/workflows/polaris-console.yaml, run by hand) builds it and pushes
+# ghcr.io/daun-gatal/analytics/polaris-console:latest, the package's only
+# image. Run it once before the first polaris deploy; each later run
+# restarts this Deployment, which pulls the new :latest (pull policy Always).
 #
 #   UI        http://polaris-console   (tailnet only)
 #   login     principal `admin` (role service_admin):
@@ -63,8 +65,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: console
-          image: polaris-console   # pinned in kustomization.yaml
-          imagePullPolicy: IfNotPresent
+          image: polaris-console   # :latest, set in kustomization.yaml
+          imagePullPolicy: Always  # :latest moves: every start pulls it
           ports:
             - name: http
               containerPort: 8080

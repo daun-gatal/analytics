@@ -21,11 +21,11 @@ helmCharts:
     valuesFile: helm.yaml
 
 images:
-  # Polaris Console, built by CI (build-console job, deploy.yaml) from
-  # apache/polaris-tools at THIS commit: the tag is the pin. To update,
-  # set a newer polaris-tools commit (full 40-char sha) here; CI builds it
-  # when GHCR has no image with that tag yet. Published as a PUBLIC package
-  # (the first push creates it private: flip it once).
+  # Polaris Console, built by its own workflow (polaris-console.yaml, run
+  # by hand) from apache/polaris-tools. The package holds exactly ONE image,
+  # :latest (every run deletes the others); the commit it was built from is
+  # in the image's org.opencontainers.image.revision label. Published as a
+  # PUBLIC package (the first push creates it private: flip it once).
   - name: polaris-console
     newName: ghcr.io/daun-gatal/analytics/polaris-console
-    newTag: c4f742ce57c983b8935f964006521d637d8fa402
+    newTag: latest
