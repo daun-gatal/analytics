@@ -389,7 +389,7 @@ jobs:
                   # default bucket + table bucket, the BeziSync RustFS user,
                   # and the BeziSync destination (skips when it exists or
                   # BeziSync isn't installed) — rustfs/bootstrap-job.yaml
-                  wait_job rustfs rustfs-bootstrap 900 "table bucket on every node + BeziSync user/destination"
+                  wait_job rustfs rustfs-bootstrap 1800 "table bucket on every node + BeziSync user/destination"
                   ;;
               esac
               case "$TARGET" in

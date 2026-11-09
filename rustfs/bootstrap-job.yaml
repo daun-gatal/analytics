@@ -10,7 +10,8 @@ spec:
   # A failed ensure should surface as a failed Job, not retry forever:
   # readiness alone can eat 5m, the three ensure phases retry 6x each.
   backoffLimit: 6
-  activeDeadlineSeconds: 1200
+  # readiness (≤5m) + ensure phases + the per-node catalog fallback (≤17m)
+  activeDeadlineSeconds: 1800
   # Garbage-collect the completed Job after an hour — the next rustfs/all
   # apply re-creates it, so every deploy re-verifies the default bucket
   # state (and it self-heals after PVC wipes).

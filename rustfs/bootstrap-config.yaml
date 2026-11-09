@@ -94,23 +94,38 @@ data:
     }
 
     # catalog_on_every_node: GET .../namespaces on each RustFS pod directly
-    # (headless DNS), not through the Service. Right after a fresh enable,
-    # distributed RustFS 1.0.4 nodes can keep answering 400 "bucket … is
-    # not table-enabled" for minutes (seen: ~6 min on 2 of 4 nodes) — a
-    # client routed to such a node fails while the state endpoint above
-    # already reports enabled. Prints the nodes still lagging.
+    # (headless DNS), not through the Service, and re-enable the table
+    # bucket ON any pod that doesn't serve it yet.
+    #
+    # Why: every RustFS node caches bucket metadata in memory; a change is
+    # pushed to peers by an internode "reload" RPC, with a full reload only
+    # every 15 min (BUCKET_METADATA_REFRESH_INTERVAL). Enabling right after
+    # a fresh start can lose that RPC (peers still connecting), and the
+    # nodes that missed it answer 400 "bucket … is not table-enabled" for
+    # up to 15 min while others — and the state endpoint — say enabled.
+    # Seen 2026-11-09 on rustfs-0/-3. A PUT handled by the lagging node
+    # itself makes it re-read and rewrite the metadata, i.e. exactly the
+    # manual "enable S3 Tables again" fix, without waiting for the reload.
+    node_http() {   # node_http <METHOD> <node> <path>
+        curl --silent --output /dev/null --write-out '%{http_code}' \
+            --request "$1" \
+            --aws-sigv4 "aws:amz:${AWS_DEFAULT_REGION}:s3" \
+            --user "${RUSTFS_ACCESS_KEY}:${RUSTFS_SECRET_KEY}" \
+            --header "x-amz-content-sha256: ${EMPTY_SHA256}" \
+            --max-time 15 \
+            "http://$2:${RUSTFS_PORT}$3" || true
+    }
+
     catalog_on_every_node() {
         _lagging=""
         _i=0
         while [ "${_i}" -lt "${RUSTFS_REPLICAS}" ]; do
             _node="${RUSTFS_STATEFULSET}-${_i}.${RUSTFS_HEADLESS_SERVICE}"
-            _code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
-                --aws-sigv4 "aws:amz:${AWS_DEFAULT_REGION}:s3" \
-                --user "${RUSTFS_ACCESS_KEY}:${RUSTFS_SECRET_KEY}" \
-                --header "x-amz-content-sha256: ${EMPTY_SHA256}" \
-                --max-time 15 \
-                "http://${_node}:${RUSTFS_PORT}/iceberg/v1/${BUCKET_NAME}/namespaces" || true)"
-            [ "${_code}" = "200" ] || _lagging="${_lagging} ${_node}(${_code})"
+            _code="$(node_http GET "${_node}" "/iceberg/v1/${BUCKET_NAME}/namespaces")"
+            if [ "${_code}" != "200" ]; then
+                _fix="$(node_http PUT "${_node}" "/iceberg/v1/buckets/${BUCKET_NAME}")"
+                _lagging="${_lagging} ${_node}(${_code}, re-enable ${_fix})"
+            fi
             _i=$((_i + 1))
         done
         if [ -n "${_lagging}" ]; then
@@ -191,9 +206,11 @@ data:
         exit 1
     fi
 
-    echo "▶ Waiting until all ${RUSTFS_REPLICAS} RustFS nodes serve the catalog (up to 10m)"
-    if ! with_retries 60 catalog_on_every_node; then
-        echo "❌ Not every RustFS node serves the '${BUCKET_NAME}' catalog after 10m" >&2
+    # Fallback bound: past RustFS's 15-min metadata reload, should a
+    # re-enable ever not take.
+    echo "▶ Checking that all ${RUSTFS_REPLICAS} RustFS nodes serve the catalog"
+    if ! with_retries 100 catalog_on_every_node; then
+        echo "❌ Not every RustFS node serves the '${BUCKET_NAME}' catalog after ~17m" >&2
         exit 1
     fi
 
