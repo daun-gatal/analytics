@@ -345,26 +345,33 @@ jobs:
           case "${K8S_ACTION}" in
             apply)
               echo "▶ Applying $TARGET"
-              # wait_job <ns> <job> <seconds> <what>: poll in short slices
-              # like the `trigger` action — 'kubectl wait
-              # --for=condition=complete' alone blocks the full timeout on a
-              # FAILED job. Dumps every container's log (init containers
-              # included) either way, so registration outcomes show in CI.
+              # wait_job <ns> <job> <seconds> <what>: poll the Job's own
+              # status conditions every 5s. (Not `kubectl wait
+              # --for=condition=failed --timeout=1s`: over the Tailscale
+              # round trip that short wait times out before it sees the
+              # condition, so a failed Job ran into the full deadline.)
+              # Dumps every container's log (init containers included)
+              # either way, so registration outcomes show in CI.
               wait_job() {
-                local ns="$1" job="$2" secs="$3" what="$4" ok=""
+                local ns="$1" job="$2" secs="$3" what="$4" state=""
                 kubectl get "job/$job" -n "$ns" >/dev/null 2>&1 || return 0
-                echo "▶ Waiting for $job ($what)"
-                local deadline=$(( $(date +%s) + secs ))
-                while [ "$(date +%s)" -lt "$deadline" ]; do
-                  if kubectl wait --for=condition=complete --timeout=10s "job/$job" -n "$ns" >/dev/null 2>&1; then ok=1; break; fi
-                  if kubectl wait --for=condition=failed --timeout=1s "job/$job" -n "$ns" >/dev/null 2>&1; then break; fi
+                echo "▶ Waiting for $job ($what, up to $(( secs / 60 ))m)"
+                local start; start=$(date +%s)
+                while [ $(( $(date +%s) - start )) -lt "$secs" ]; do
+                  state="$(kubectl get "job/$job" -n "$ns" -o jsonpath='{range .status.conditions[?(@.status=="True")]}{.type} {end}' 2>/dev/null || true)"
+                  case " $state " in
+                    *" Complete "*|*" SuccessCriteriaMet "*) state=complete; break ;;
+                    *" Failed "*) state=failed; break ;;
+                  esac
+                  sleep 5
                 done
-                kubectl logs "job/$job" -n "$ns" --all-containers=true --prefix=true --tail=100 || true
-                if [ -z "$ok" ]; then
-                  echo "❌ $job did not complete — see logs above"
+                kubectl logs "job/$job" -n "$ns" --all-containers=true --prefix=true --tail=100 --pod-running-timeout=5s || true
+                if [ "$state" != complete ]; then
+                  echo "❌ $job ${state:-timed out after $(( secs / 60 ))m} — see logs above"
+                  kubectl get pods -n "$ns" -l "job-name=$job" -o wide || true
                   exit 1
                 fi
-                echo "✅ $job completed"
+                echo "✅ $job completed in $(( $(date +%s) - start ))s"
               }
               # Job specs are immutable — drop the previous run of each
               # deploy-time Job so the apply installs the current template.
@@ -382,7 +389,7 @@ jobs:
                   # default bucket + table bucket, the BeziSync RustFS user,
                   # and the BeziSync destination (skips when it exists or
                   # BeziSync isn't installed) — rustfs/bootstrap-job.yaml
-                  wait_job rustfs rustfs-bootstrap 600 "table bucket + BeziSync user/destination"
+                  wait_job rustfs rustfs-bootstrap 900 "table bucket on every node + BeziSync user/destination"
                   ;;
               esac
               case "$TARGET" in

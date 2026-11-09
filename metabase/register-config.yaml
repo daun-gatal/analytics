@@ -76,6 +76,50 @@ data:
             raise Refused(e.code, f"{method} {path} -> HTTP {e.code}: {detail}") from None
 
 
+    def create_database():
+        """POST /api/database; Metabase tests the DuckFlight connection first.
+        Right after a fresh RustFS table bucket, DuckDB's catalog calls can
+        fail for minutes (RustFS nodes answer 400 'not table-enabled' until
+        they catch up), and DuckDB itself may still be starting: retry for
+        up to 8 min. Credential errors fail at once."""
+        body = {
+            "engine": "postgres",
+            "name": name,
+            "details": {
+                "host": env("DUCKFLIGHT_HOST"),
+                "port": int(env("DUCKFLIGHT_PORT", "5433")),
+                "dbname": env("DUCKFLIGHT_DBNAME", "datalake"),
+                "user": env("DUCKFLIGHT_USER"),
+                "password": env("DUCKFLIGHT_PASSWORD"),
+                # self-signed cert, regenerated per duckdb pod: encrypt,
+                # don't verify
+                "ssl": True,
+                "ssl-mode": "require",
+                "tunnel-enabled": False,
+                "let-user-control-scheduling": True,
+            },
+            # every scan is a full read of the Iceberg tables: schema
+            # sync only — no field-value scans, no auto-rerun
+            "is_full_sync": False,
+            "is_on_demand": False,
+            "refingerprint": False,
+            "auto_run_queries": False,
+        }
+        until = time.time() + 480
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                return call("POST", "/api/database", body, timeout=180)
+            except Refused as e:
+                msg = str(e).lower()
+                permanent = e.code != 400 or "authentication" in msg or "password" in msg
+                if permanent or time.time() > until:
+                    raise
+                print(f"   ↻ attempt {attempt}: {str(e)[:220]} — retrying in 15s")
+                time.sleep(15)
+
+
     # Metabase restarts alongside this Job on an apply: wait up to 10 min
     deadline = time.time() + 600
     while True:
@@ -119,29 +163,7 @@ data:
         if any(d.get("name") == name for d in dbs):
             print(f"⏭  Metabase: database '{name}' already exists — skipping")
         else:
-            created = call("POST", "/api/database", {
-                "engine": "postgres",
-                "name": name,
-                "details": {
-                    "host": env("DUCKFLIGHT_HOST"),
-                    "port": int(env("DUCKFLIGHT_PORT", "5433")),
-                    "dbname": env("DUCKFLIGHT_DBNAME", "datalake"),
-                    "user": env("DUCKFLIGHT_USER"),
-                    "password": env("DUCKFLIGHT_PASSWORD"),
-                    # self-signed cert, regenerated per duckdb pod: encrypt,
-                    # don't verify
-                    "ssl": True,
-                    "ssl-mode": "require",
-                    "tunnel-enabled": False,
-                    "let-user-control-scheduling": True,
-                },
-                # every scan is a full read of the Iceberg tables: schema
-                # sync only — no field-value scans, no auto-rerun
-                "is_full_sync": False,
-                "is_on_demand": False,
-                "refingerprint": False,
-                "auto_run_queries": False,
-            }, timeout=180)
+            created = create_database()
             print(f"✅ Metabase: added database '{name}' (id {created.get('id')}) → "
                   f"{env('DUCKFLIGHT_HOST')}:{env('DUCKFLIGHT_PORT')}/{env('DUCKFLIGHT_DBNAME')}")
     except Refused as e:
@@ -156,3 +178,4 @@ data:
                 call("DELETE", "/api/session", timeout=10)
             except Exception:
                 pass
+

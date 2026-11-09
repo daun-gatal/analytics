@@ -20,7 +20,10 @@ spec:
         app.kubernetes.io/name: metabase-register
         app.kubernetes.io/component: metabase
     spec:
-      restartPolicy: OnFailure
+      # Never (not OnFailure): a failed attempt keeps its pod, so CI's
+      # wait_job can still print why it failed (OnFailure pods are deleted
+      # with their logs once backoffLimit is hit).
+      restartPolicy: Never
       containers:
         - name: register
           image: python:3.13.18-alpine

@@ -21,7 +21,10 @@ spec:
         app.kubernetes.io/name: rustfs-bootstrap
         app.kubernetes.io/part-of: rustfs
     spec:
-      restartPolicy: OnFailure
+      # Never (not OnFailure): a failed attempt keeps its pod, so CI's
+      # wait_job can still print why it failed (OnFailure pods are deleted
+      # with their logs once backoffLimit is hit).
+      restartPolicy: Never
       # Steps run in order; each must succeed before the next starts:
       #   1. bootstrap         default bucket + S3 table bucket (bootstrap.sh)
       #   2. iam               BeziSync policy + RustFS user (iam.sh)

@@ -19,6 +19,13 @@ data:
   # after `apply` — fail loudly when the state cannot be ensured.
   #
   RUSTFS_ENDPOINT: http://rustfs-svc:9000
+  # Per-node catalog check after enabling the table bucket: every pod
+  # <statefulset>-<i>.<headless>:<port> must serve the catalog. Keep
+  # RUSTFS_REPLICAS equal to replicaCount in helm.yaml.
+  RUSTFS_STATEFULSET: rustfs
+  RUSTFS_HEADLESS_SERVICE: rustfs-headless
+  RUSTFS_PORT: '9000'
+  RUSTFS_REPLICAS: '4'
   BUCKET_NAME: datalake
   AWS_DEFAULT_REGION: us-east-1
   bootstrap.sh: |
@@ -84,6 +91,32 @@ data:
 
     ready() {
         [ "$(http GET /health/ready)" = "200" ]
+    }
+
+    # catalog_on_every_node: GET .../namespaces on each RustFS pod directly
+    # (headless DNS), not through the Service. Right after a fresh enable,
+    # distributed RustFS 1.0.4 nodes can keep answering 400 "bucket … is
+    # not table-enabled" for minutes (seen: ~6 min on 2 of 4 nodes) — a
+    # client routed to such a node fails while the state endpoint above
+    # already reports enabled. Prints the nodes still lagging.
+    catalog_on_every_node() {
+        _lagging=""
+        _i=0
+        while [ "${_i}" -lt "${RUSTFS_REPLICAS}" ]; do
+            _node="${RUSTFS_STATEFULSET}-${_i}.${RUSTFS_HEADLESS_SERVICE}"
+            _code="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+                --aws-sigv4 "aws:amz:${AWS_DEFAULT_REGION}:s3" \
+                --user "${RUSTFS_ACCESS_KEY}:${RUSTFS_SECRET_KEY}" \
+                --header "x-amz-content-sha256: ${EMPTY_SHA256}" \
+                --max-time 15 \
+                "http://${_node}:${RUSTFS_PORT}/iceberg/v1/${BUCKET_NAME}/namespaces" || true)"
+            [ "${_code}" = "200" ] || _lagging="${_lagging} ${_node}(${_code})"
+            _i=$((_i + 1))
+        done
+        if [ -n "${_lagging}" ]; then
+            echo "  catalog not served yet by:${_lagging}" >&2
+            return 1
+        fi
     }
 
     create_bucket() {
@@ -158,4 +191,10 @@ data:
         exit 1
     fi
 
-    echo "✅ Default bucket ready: '${BUCKET_NAME}' is an S3 table bucket (warehouse '${BUCKET_NAME}')"
+    echo "▶ Waiting until all ${RUSTFS_REPLICAS} RustFS nodes serve the catalog (up to 10m)"
+    if ! with_retries 60 catalog_on_every_node; then
+        echo "❌ Not every RustFS node serves the '${BUCKET_NAME}' catalog after 10m" >&2
+        exit 1
+    fi
+
+    echo "✅ Default bucket ready: '${BUCKET_NAME}' is an S3 table bucket (warehouse '${BUCKET_NAME}'), served by all ${RUSTFS_REPLICAS} nodes"
