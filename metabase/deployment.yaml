@@ -32,6 +32,45 @@ spec:
         app.kubernetes.io/name: metabase
         app.kubernetes.io/component: metabase
     spec:
+      initContainers:
+        # Wait for metabase-db, then make sure the app database exists.
+        # The postgres image only runs CREATE DATABASE during its very first
+        # init; if that first start dies after initdb (as it did under the
+        # node's AppArmor signal denials — see postgres.yaml), every later
+        # start skips init and Metabase fails with
+        # `database "metabase" does not exist`. Idempotent: a no-op once
+        # the database is there.
+        - name: ensure-app-db
+          image: postgres:18.6-alpine
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              until pg_isready -h "$PGHOST" -U "$PGUSER" -d postgres -q; do
+                echo "waiting for $PGHOST"; sleep 2
+              done
+              if [ "$(psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$APP_DB'")" = "1" ]; then
+                echo "database $APP_DB present"
+              else
+                psql -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$APP_DB\" OWNER \"$PGUSER\""
+                echo "database $APP_DB created"
+              fi
+          env:
+            - name: PGHOST
+              value: metabase-db.analytics.svc.cluster.local
+            - name: PGUSER
+              value: metabase
+            - name: APP_DB
+              value: metabase
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-secrets
+                  key: db-password
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
       containers:
         - name: metabase
           image: metabase/metabase:v0.65.3.6
