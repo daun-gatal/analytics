@@ -1,4 +1,5 @@
-# Register DuckDB in Metabase after every metabase apply (skip-if-exists).
+# Set up Metabase (when fresh) and register DuckDB after every metabase
+# apply (skip-if-exists), signed in as the admin from Secret/metabase-admin.
 # Like rustfs-bootstrap, CI deletes the previous Job before each apply (Job
 # specs are immutable) and waits for this one; the ttl GCs it afterwards.
 kind: Job
@@ -41,12 +42,19 @@ spec:
                 secretKeyRef:
                   name: duckflight-auth
                   key: password
-            # optional: no Secret / no key -> registration is skipped
-            - name: METABASE_API_KEY
+            # Metabase admin the Job sets up / signs in as (generated once
+            # by CI; no Secret -> registration is skipped)
+            - name: METABASE_ADMIN_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: metabase-api
-                  key: api-key
+                  name: metabase-admin
+                  key: email
+                  optional: true
+            - name: METABASE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-admin
+                  key: password
                   optional: true
           securityContext:
             allowPrivilegeEscalation: false

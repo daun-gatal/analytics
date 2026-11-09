@@ -14,16 +14,17 @@ data:
   #     every deploy re-applies this file's policy.
   #
   #   register-bezisync.py (container `bezisync-register`)
-  #     create the RustFS Iceberg destination in BeziSync — only when
-  #     Secret/bezisync-api has a token (GitHub Secret BEZISYNC_API_TOKEN),
-  #     and only when no connection named BEZISYNC_CONNECTION_NAME exists
-  #     in the project yet. An existing one is left untouched.
+  #     sign in as BeziSync's bootstrap admin and create the RustFS Iceberg
+  #     destination — only when no connection named BEZISYNC_CONNECTION_NAME
+  #     exists in the project yet. An existing one is left untouched.
   #
   # Credentials (Secrets in ns rustfs, created by CI):
   #   rustfs-credentials  root keys            (GitHub RUSTFS_* secrets)
   #   rustfs-bezisync     access-key/secret-key for the BeziSync user
   #                       (generated once in-cluster, never rotated by CI)
-  #   bezisync-api        token, a BeziSync API token (bzt_…) — optional
+  #   bezisync-login      email/password of BeziSync's bootstrap admin, copied
+  #                       by CI from bezisync/bezisync-secrets on every apply
+  #                       (absent when BeziSync isn't installed -> skip)
   #
   BEZISYNC_API_URL: http://bezisync-api.bezisync.svc.cluster.local:8000
   BEZISYNC_PROJECT: playground         # project slug
@@ -124,98 +125,147 @@ data:
   register-bezisync.py: |
     """Create the RustFS Iceberg destination in BeziSync, if missing.
 
-    Skips (exit 0) when no API token is configured or the connection
-    already exists. Unreachable BeziSync is a warning (exit 0): the lake
-    deploy must not depend on it. Any API refusal (bad token, unknown
-    project, invalid config) fails the Job so the deploy shows it.
+    Signs in as BeziSync's bootstrap admin (Secret/bezisync-login, copied by
+    CI from BeziSync's own bezisync-secrets) — no API token.
+
+    Exit 0 on: no login configured (skip), connection exists (skip),
+    BeziSync unreachable or the login refused (warning). Exit 1 on any other
+    refusal (unknown project, rejected config) so the deploy shows it.
+    REGISTER_DRY_RUN=1 runs BeziSync's draft check instead of creating.
     """
     import json
     import os
     import sys
     import urllib.error
     import urllib.request
+    from http.cookies import SimpleCookie
 
     env = os.environ.get
-    token = (env("BEZISYNC_API_TOKEN") or "").strip()
     api = env("BEZISYNC_API_URL", "").rstrip("/") + "/api/v1"
+    email = (env("BEZISYNC_LOGIN_EMAIL") or "").strip()
+    password = env("BEZISYNC_LOGIN_PASSWORD") or ""
     slug = env("BEZISYNC_PROJECT", "playground")
     name = env("BEZISYNC_CONNECTION_NAME", "rustfs-lake")
     endpoint = env("RUSTFS_CLUSTER_ENDPOINT", "").rstrip("/")
+    dry = env("REGISTER_DRY_RUN") == "1"
 
-    if not token:
-        print("⏭  BeziSync: no API token (Secret bezisync-api) — skipping registration")
+    if not email or not password:
+        print("⏭  BeziSync: no login (Secret bezisync-login) — skipping registration")
         sys.exit(0)
 
 
     class Refused(Exception):
-        pass
+        def __init__(self, code, msg):
+            super().__init__(msg)
+            self.code = code
+
+
+    cookies = {}
 
 
     def call(method, path, body=None):
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if cookies:
+            # session auth: cookies + double-submit CSRF header on writes. Sent
+            # by hand — BeziSync may mark them Secure, and this is in-cluster http.
+            headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
+            if "bz_csrf" in cookies:
+                headers["x-csrf-token"] = cookies["bz_csrf"]
         req = urllib.request.Request(
-            api + path,
-            method=method,
-            data=json.dumps(body).encode() if body is not None else None,
-            headers={"Authorization": f"Bearer {token}",
-                     "Content-Type": "application/json",
-                     "Accept": "application/json"},
-        )
+            api + path, method=method, headers=headers,
+            data=json.dumps(body).encode() if body is not None else None)
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
-                raw = resp.read()
-                return json.loads(raw) if raw else None
+                for raw in resp.headers.get_all("Set-Cookie") or []:
+                    for k, m in SimpleCookie(raw).items():
+                        cookies[k] = m.value
+                data = resp.read()
+                return json.loads(data) if data else None
         except urllib.error.HTTPError as e:
             detail = e.read()[:600].decode("utf-8", "replace")
-            raise Refused(f"{method} {path} -> HTTP {e.code}: {detail}") from None
+            raise Refused(e.code, f"{method} {path} -> HTTP {e.code}: {detail}") from None
 
 
+    config = {
+        "catalog_type": "rest",
+        "uri": f"{endpoint}/iceberg",
+        "warehouse": env("BUCKET_NAME", "datalake"),
+        "namespace": env("BEZISYNC_ICEBERG_NAMESPACE", "cdc"),
+        "auth": "sigv4",
+        "signing_name": "s3",
+        "storage": "s3",
+        "s3_endpoint": endpoint,
+        "path_style": True,
+        "region": env("AWS_DEFAULT_REGION", "us-east-1"),
+        "access_key_id": env("BEZISYNC_ACCESS_KEY"),
+    }
+    secrets = {"secret_access_key": env("BEZISYNC_SECRET_KEY")}
+
+    def show(report, label):
+        report = report or {}
+        print(f"   {label}: {report.get('summary', report)}")
+        for c in report.get("checks") or []:
+            if c.get("status") != "pass":
+                print(f"     - {c.get('status')}: {c.get('title')} — {c.get('message')}"
+                      + (f" | fix: {c['fix']}" if c.get("fix") else ""))
+
+
+    signed_in = False
     try:
+        try:
+            call("POST", "/auth/login", {"email": email, "password": password})
+            signed_in = True
+        except Refused as e:
+            if e.code in (401, 403):
+                print(f"⚠️  BeziSync: {email} can't sign in ({e}) — skipping. "
+                      "Was the bootstrap admin's password changed?")
+                sys.exit(0)
+            raise
+
         projects = call("GET", "/projects")
         if isinstance(projects, dict):
             projects = projects.get("items", [])
         project = next((p for p in projects if p.get("slug") == slug), None)
         if project is None:
-            raise Refused(f"project '{slug}' not found (or the token can't see it)")
+            raise Refused(404, f"project '{slug}' not found (or {email} can't see it)")
         pid = project["id"]
 
         existing = call("GET", f"/projects/{pid}/connections")
         if any(c.get("name") == name for c in existing):
             print(f"⏭  BeziSync: connection '{name}' already exists in project '{slug}' — skipping")
-            sys.exit(0)
-
-        created = call("POST", f"/projects/{pid}/connections", {
-            "kind": "sink",
-            "type": "iceberg",
-            "provider": "rustfs",
-            "name": name,
-            "description": "RustFS Iceberg REST catalog (datalake table bucket). "
-                           "Managed by the analytics repo rustfs deploy.",
-            "managed": True,
-            "config": {
-                "catalog_type": "rest",
-                "uri": f"{endpoint}/iceberg",
-                "warehouse": env("BUCKET_NAME", "datalake"),
-                "namespace": env("BEZISYNC_ICEBERG_NAMESPACE", "cdc"),
-                "auth": "sigv4",
-                "signing_name": "s3",
-                "storage": "s3",
-                "s3_endpoint": endpoint,
-                "path_style": True,
-                "region": env("AWS_DEFAULT_REGION", "us-east-1"),
-                "access_key_id": env("BEZISYNC_ACCESS_KEY"),
-            },
-            "secrets": {"secret_access_key": env("BEZISYNC_SECRET_KEY")},
-        })
-        print(f"✅ BeziSync: created destination '{name}' ({created.get('id')}) in project '{slug}'")
-
-        try:
-            report = call("POST", f"/projects/{pid}/connections/{created['id']}/check", {})
-            print(f"   check: {(report or {}).get('summary', report)}")
-        except Refused as e:  # informative only: the connection exists now
-            print(f"⚠️  BeziSync: readiness check could not run: {e}")
+        elif dry:
+            report = call("POST", f"/projects/{pid}/connections:check",
+                          {"kind": "sink", "type": "iceberg", "provider": "rustfs",
+                           "config": config, "secrets": secrets})
+            print("🧪 BeziSync dry run: config accepted")
+            show(report, "check")
+        else:
+            created = call("POST", f"/projects/{pid}/connections", {
+                "kind": "sink",
+                "type": "iceberg",
+                "provider": "rustfs",
+                "name": name,
+                "description": "RustFS Iceberg REST catalog (datalake table bucket). "
+                               "Managed by the analytics repo rustfs deploy.",
+                "managed": True,
+                "config": config,
+                "secrets": secrets,
+            })
+            print(f"✅ BeziSync: created destination '{name}' ({created.get('id')}) in project '{slug}'")
+            try:
+                report = call("POST", f"/projects/{pid}/connections/{created['id']}/check", {})
+                show(report, "check")
+            except Refused as e:  # informative only: the connection exists now
+                print(f"⚠️  BeziSync: readiness check could not run: {e}")
     except Refused as e:
         print(f"❌ BeziSync: {e}")
         sys.exit(1)
     except (urllib.error.URLError, OSError) as e:
         print(f"⚠️  BeziSync unreachable at {api} ({e}) — skipping registration")
         sys.exit(0)
+    finally:
+        if signed_in:
+            try:
+                call("POST", "/auth/logout", {})
+            except Exception:
+                pass

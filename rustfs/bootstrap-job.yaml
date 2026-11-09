@@ -127,12 +127,19 @@ spec:
                 secretKeyRef:
                   name: rustfs-bezisync
                   key: secret-key
-            # optional: no Secret / no key -> registration is skipped
-            - name: BEZISYNC_API_TOKEN
+            # BeziSync's bootstrap admin, copied by CI from BeziSync's own
+            # Secret (no Secret -> BeziSync not installed -> skip)
+            - name: BEZISYNC_LOGIN_EMAIL
               valueFrom:
                 secretKeyRef:
-                  name: bezisync-api
-                  key: token
+                  name: bezisync-login
+                  key: email
+                  optional: true
+            - name: BEZISYNC_LOGIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bezisync-login
+                  key: password
                   optional: true
           securityContext:
             allowPrivilegeEscalation: false
