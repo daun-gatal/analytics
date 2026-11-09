@@ -22,7 +22,12 @@ spec:
         app.kubernetes.io/part-of: rustfs
     spec:
       restartPolicy: OnFailure
-      containers:
+      # Steps run in order; each must succeed before the next starts:
+      #   1. bootstrap         default bucket + S3 table bucket (bootstrap.sh)
+      #   2. iam               BeziSync policy + RustFS user (iam.sh)
+      #   3. bezisync-register create the BeziSync destination if missing
+      #                        (skips without a token / when it exists)
+      initContainers:
         - name: bootstrap
           # curl >= 7.76 is required for --aws-sigv4 (pinned 8.x)
           image: curlimages/curl:8.22.0
@@ -55,8 +60,108 @@ spec:
             - name: config
               mountPath: /config
               readOnly: true
+        - name: iam
+          image: rustfs/rc:v0.1.37
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "/bezisync/iam.sh"]
+          envFrom:
+            - configMapRef:
+                name: rustfs-bezisync-config
+            - secretRef:
+                name: rustfs-credentials   # root keys, created by CI
+          env:
+            - name: HOME             # rc keeps its alias config here
+              value: /home/rc
+            - name: BEZISYNC_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-bezisync
+                  key: access-key
+            - name: BEZISYNC_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-bezisync
+                  key: secret-key
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 100    # rc
+            runAsGroup: 101   # rc
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: bezisync
+              mountPath: /bezisync
+              readOnly: true
+            - name: rc-home
+              mountPath: /home/rc
+      containers:
+        - name: bezisync-register
+          image: python:3.13.18-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-I", "/bezisync/register-bezisync.py"]
+          envFrom:
+            - configMapRef:
+                name: rustfs-bootstrap-config   # BUCKET_NAME, AWS_DEFAULT_REGION
+            - configMapRef:
+                name: rustfs-bezisync-config
+          env:
+            - name: PYTHONUNBUFFERED
+              value: '1'
+            - name: BEZISYNC_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-bezisync
+                  key: access-key
+            - name: BEZISYNC_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-bezisync
+                  key: secret-key
+            # optional: no Secret / no key -> registration is skipped
+            - name: BEZISYNC_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: bezisync-api
+                  key: token
+                  optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534   # nobody
+            runAsGroup: 65534
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: bezisync
+              mountPath: /bezisync
+              readOnly: true
       volumes:
         - name: config
           configMap:
             name: rustfs-bootstrap-config
             defaultMode: 0555
+        - name: bezisync
+          configMap:
+            name: rustfs-bezisync-config
+            defaultMode: 0555
+        - name: rc-home
+          emptyDir: {}

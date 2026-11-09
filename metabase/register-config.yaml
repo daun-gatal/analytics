@@ -1,0 +1,123 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: metabase-register-config
+  namespace: analytics
+data:
+  #
+  # register-duckdb.py runs in Job/metabase-register on every metabase
+  # apply: wait for Metabase, then add DuckDB (DuckFlight Postgres wire) as
+  # a database — only when Secret/metabase-api has a key (GitHub Secret
+  # METABASE_API_KEY) and no database named METABASE_DB_NAME exists yet.
+  # An existing one is left untouched.
+  #
+  # The API key comes from Metabase itself: Admin → Settings →
+  # Authentication → API keys, group "Administrators". So the very first
+  # deploy (before the setup wizard) skips; re-apply after adding the key.
+  #
+  METABASE_URL: http://metabase.analytics.svc.cluster.local
+  METABASE_DB_NAME: Lake
+  DUCKFLIGHT_HOST: duckdb.analytics.svc.cluster.local
+  DUCKFLIGHT_PORT: '5433'
+  # DuckFlight uses dbname as the default catalog: `datalake` is what makes
+  # the lake tables visible and schema.table SQL resolve.
+  DUCKFLIGHT_DBNAME: datalake
+
+  register-duckdb.py: |
+    """Add DuckDB/DuckFlight to Metabase as a PostgreSQL database, if missing.
+
+    Skips (exit 0) without an API key or when the database exists. A
+    Metabase that never becomes healthy is a warning (exit 0). Any API
+    refusal (bad key, failed connection test) fails the Job.
+    """
+    import json
+    import os
+    import sys
+    import time
+    import urllib.error
+    import urllib.request
+
+    env = os.environ.get
+    key = (env("METABASE_API_KEY") or "").strip()
+    base = env("METABASE_URL", "").rstrip("/")
+    name = env("METABASE_DB_NAME", "Lake")
+
+    if not key:
+        print("⏭  Metabase: no API key (Secret metabase-api) — skipping registration")
+        sys.exit(0)
+
+
+    class Refused(Exception):
+        pass
+
+
+    def call(method, path, body=None, timeout=60):
+        req = urllib.request.Request(
+            base + path,
+            method=method,
+            data=json.dumps(body).encode() if body is not None else None,
+            headers={"x-api-key": key,
+                     "Content-Type": "application/json",
+                     "Accept": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:600].decode("utf-8", "replace")
+            raise Refused(f"{method} {path} -> HTTP {e.code}: {detail}") from None
+
+
+    # Metabase restarts alongside this Job on an apply: wait up to 10 min
+    deadline = time.time() + 600
+    while True:
+        try:
+            if (call("GET", "/api/health", timeout=10) or {}).get("status") == "ok":
+                break
+        except Exception:
+            pass
+        if time.time() > deadline:
+            print(f"⚠️  Metabase not healthy at {base} after 10 min — skipping registration")
+            sys.exit(0)
+        time.sleep(5)
+
+    try:
+        dbs = call("GET", "/api/database")
+        if isinstance(dbs, dict):
+            dbs = dbs.get("data", [])
+        if any(d.get("name") == name for d in dbs):
+            print(f"⏭  Metabase: database '{name}' already exists — skipping")
+            sys.exit(0)
+
+        created = call("POST", "/api/database", {
+            "engine": "postgres",
+            "name": name,
+            "details": {
+                "host": env("DUCKFLIGHT_HOST"),
+                "port": int(env("DUCKFLIGHT_PORT", "5433")),
+                "dbname": env("DUCKFLIGHT_DBNAME", "datalake"),
+                "user": env("DUCKFLIGHT_USER"),
+                "password": env("DUCKFLIGHT_PASSWORD"),
+                # self-signed cert, regenerated per duckdb pod: encrypt,
+                # don't verify
+                "ssl": True,
+                "ssl-mode": "require",
+                "tunnel-enabled": False,
+                "let-user-control-scheduling": True,
+            },
+            # every scan is a full read of the Iceberg tables: schema sync
+            # only — no field-value scans, no refingerprinting, no auto-rerun
+            "is_full_sync": False,
+            "is_on_demand": False,
+            "refingerprint": False,
+            "auto_run_queries": False,
+        }, timeout=180)
+        print(f"✅ Metabase: added database '{name}' (id {created.get('id')}) → "
+              f"{env('DUCKFLIGHT_HOST')}:{env('DUCKFLIGHT_PORT')}/{env('DUCKFLIGHT_DBNAME')}")
+    except Refused as e:
+        print(f"❌ Metabase: {e}")
+        sys.exit(1)
+    except (urllib.error.URLError, OSError) as e:
+        print(f"❌ Metabase: request failed ({e})")
+        sys.exit(1)

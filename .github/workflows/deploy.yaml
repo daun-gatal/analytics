@@ -204,6 +204,9 @@ jobs:
       RUSTFS_SECRET_KEY: ${{ secrets.RUSTFS_SECRET_KEY }}
       DUCKFLIGHT_USER: ${{ secrets.DUCKFLIGHT_USER }}
       DUCKFLIGHT_PASSWORD: ${{ secrets.DUCKFLIGHT_PASSWORD }}
+      # optional integrations — empty secret = registration skipped
+      BEZISYNC_API_TOKEN: ${{ secrets.BEZISYNC_API_TOKEN }}
+      METABASE_API_KEY: ${{ secrets.METABASE_API_KEY }}
     steps:
       - name: Validate module
         run: |
@@ -285,6 +288,32 @@ jobs:
               --from-literal=db-password="$(openssl rand -hex 24)" \
               --from-literal=encryption-key="$(openssl rand -hex 32)"
           fi
+          # RustFS user for BeziSync (policy bezisync-iceberg, see
+          # rustfs/bezisync-config.yaml): generated in-cluster ONCE. The
+          # rustfs-bootstrap Job upserts the user with it on every apply and
+          # hands it to BeziSync when it creates the destination.
+          if ! kubectl get secret rustfs-bezisync -n rustfs >/dev/null 2>&1; then
+            echo "→ generating secret/rustfs-bezisync (first deploy)"
+            kubectl create secret generic rustfs-bezisync -n rustfs \
+              --from-literal=access-key=bezisync \
+              --from-literal=secret-key="$(openssl rand -hex 24)"
+          fi
+          # Optional API credentials: set the GitHub Secret to enable a
+          # registration, remove it to turn the registration off again.
+          if [ -n "${BEZISYNC_API_TOKEN}" ]; then
+            kubectl create secret generic bezisync-api -n rustfs \
+              --from-literal=token="${BEZISYNC_API_TOKEN}" \
+              --dry-run=client -o yaml | kubectl apply -f -
+          else
+            kubectl delete secret bezisync-api -n rustfs --ignore-not-found
+          fi
+          if [ -n "${METABASE_API_KEY}" ]; then
+            kubectl create secret generic metabase-api -n analytics \
+              --from-literal=api-key="${METABASE_API_KEY}" \
+              --dry-run=client -o yaml | kubectl apply -f -
+          else
+            kubectl delete secret metabase-api -n analytics --ignore-not-found
+          fi
 
       - name: Kustomize Build
         run: |
@@ -303,46 +332,51 @@ jobs:
           case "${K8S_ACTION}" in
             apply)
               echo "▶ Applying $TARGET"
+              # wait_job <ns> <job> <seconds> <what>: poll in short slices
+              # like the `trigger` action — 'kubectl wait
+              # --for=condition=complete' alone blocks the full timeout on a
+              # FAILED job. Dumps every container's log (init containers
+              # included) either way, so registration outcomes show in CI.
+              wait_job() {
+                local ns="$1" job="$2" secs="$3" what="$4" ok=""
+                kubectl get "job/$job" -n "$ns" >/dev/null 2>&1 || return 0
+                echo "▶ Waiting for $job ($what)"
+                local deadline=$(( $(date +%s) + secs ))
+                while [ "$(date +%s)" -lt "$deadline" ]; do
+                  if kubectl wait --for=condition=complete --timeout=10s "job/$job" -n "$ns" >/dev/null 2>&1; then ok=1; break; fi
+                  if kubectl wait --for=condition=failed --timeout=1s "job/$job" -n "$ns" >/dev/null 2>&1; then break; fi
+                done
+                kubectl logs "job/$job" -n "$ns" --all-containers=true --prefix=true --tail=100 || true
+                if [ -z "$ok" ]; then
+                  echo "❌ $job did not complete — see logs above"
+                  exit 1
+                fi
+                echo "✅ $job completed"
+              }
+              # Job specs are immutable — drop the previous run of each
+              # deploy-time Job so the apply installs the current template.
+              # Both are idempotent and ttl-managed; re-running them per
+              # apply is the intended semantics.
               case "$TARGET" in
-                "."|all|rustfs)
-                  # Job specs are immutable — drop the previous bootstrap Job
-                  # so the apply below can install the current template. The
-                  # Job is idempotent and ttl-managed; re-running it per apply
-                  # is the intended semantics (default bucket ensure).
-                  kubectl delete job/rustfs-bootstrap -n rustfs --ignore-not-found
-                  ;;
+                "."|all|rustfs) kubectl delete job/rustfs-bootstrap -n rustfs --ignore-not-found ;;
+              esac
+              case "$TARGET" in
+                "."|all|metabase) kubectl delete job/metabase-register -n analytics --ignore-not-found ;;
               esac
               kubectl apply -f /tmp/built.yaml
               case "$TARGET" in
                 "."|all|rustfs)
-                  # Job/rustfs-bootstrap ensures the default bucket exists
-                  # and is enabled as an S3 table bucket (idempotent — see
-                  # rustfs/bootstrap-config.yaml). Its ttlSecondsAfterFinished
-                  # re-creates it on every rustfs/all apply, so this wait is
-                  # the deploy-time guarantee that the lake is query-ready.
-                  # Poll in short slices like the `trigger` action:
-                  # 'kubectl wait --for=condition=complete' alone blocks the
-                  # full timeout on a FAILED job.
-                  if kubectl get job/rustfs-bootstrap -n rustfs >/dev/null 2>&1; then
-                    echo "▶ Waiting for rustfs-bootstrap (default bucket + table bucket)"
-                    DEADLINE=$(( $(date +%s) + 600 ))
-                    JOB_OK=""
-                    while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-                      if kubectl wait --for=condition=complete --timeout=10s job/rustfs-bootstrap -n rustfs >/dev/null 2>&1; then
-                        JOB_OK=1
-                        break
-                      fi
-                      if kubectl wait --for=condition=failed --timeout=1s job/rustfs-bootstrap -n rustfs >/dev/null 2>&1; then
-                        break
-                      fi
-                    done
-                    if [ -z "$JOB_OK" ]; then
-                      kubectl logs job/rustfs-bootstrap -n rustfs --tail=100 --prefix=true || true
-                      echo "❌ rustfs-bootstrap did not complete — see logs above"
-                      exit 1
-                    fi
-                    echo "✅ rustfs-bootstrap completed"
-                  fi
+                  # default bucket + table bucket, the BeziSync RustFS user,
+                  # and the BeziSync destination (skips when it exists or no
+                  # BEZISYNC_API_TOKEN) — rustfs/bootstrap-job.yaml
+                  wait_job rustfs rustfs-bootstrap 600 "table bucket + BeziSync user/destination"
+                  ;;
+              esac
+              case "$TARGET" in
+                "."|all|metabase)
+                  # DuckDB in Metabase (skips when it exists or no
+                  # METABASE_API_KEY); waits for Metabase itself first
+                  wait_job analytics metabase-register 1200 "DuckDB database in Metabase"
                   ;;
               esac
               echo "▶ Syncing duckdb with deployed rustfs"
