@@ -10,21 +10,24 @@ data:
   # (generated once by CI — no API key needed):
   #
   #   fresh Metabase  -> completes the setup wizard via /api/setup with
-  #                      that admin, then adds DuckDB as METABASE_DB_NAME
-  #   already set up  -> signs in as that admin; adds the database only
-  #                      when none named METABASE_DB_NAME exists (skip)
+  #                      that admin, then adds each METABASE_DATABASES entry
+  #   already set up  -> signs in as that admin; adds each database only
+  #                      when none with that name exists (skip)
   #   set up by hand  -> sign-in fails -> warning, skip. To adopt such an
   #   with another       instance, put its admin email/password into
   #   admin              Secret/metabase-admin and re-apply.
   #
   METABASE_URL: http://metabase.analytics.svc.cluster.local
   METABASE_SITE_NAME: Analytics
-  METABASE_DB_NAME: Lake
+  # Metabase database name = DuckFlight dbname, comma-separated. DuckFlight
+  # uses dbname as the default catalog: it decides which DuckDB catalog's
+  # tables a Metabase database lists and resolves schema.table against.
+  #   Lake      -> datalake   RustFS built-in catalog (datalake table bucket)
+  #   Lakehouse -> lakehouse  Lakekeeper catalog (lakehouse bucket; attached
+  #                           by duckdb when the warehouse is reachable)
+  METABASE_DATABASES: Lake=datalake,Lakehouse=lakehouse
   DUCKFLIGHT_HOST: duckdb.analytics.svc.cluster.local
   DUCKFLIGHT_PORT: '5433'
-  # DuckFlight uses dbname as the default catalog: `datalake` is what makes
-  # the lake tables visible and schema.table SQL resolve.
-  DUCKFLIGHT_DBNAME: datalake
 
   register-duckdb.py: |
     """Set up Metabase (when fresh) and add DuckDB/DuckFlight, if missing.
@@ -42,7 +45,8 @@ data:
 
     env = os.environ.get
     base = env("METABASE_URL", "").rstrip("/")
-    name = env("METABASE_DB_NAME", "Lake")
+    databases = [tuple(p.strip() for p in item.split("=", 1))
+                 for item in env("METABASE_DATABASES", "Lake=datalake").split(",") if "=" in item]
     email = (env("METABASE_ADMIN_EMAIL") or "").strip()
     password = env("METABASE_ADMIN_PASSWORD") or ""
 
@@ -76,7 +80,7 @@ data:
             raise Refused(e.code, f"{method} {path} -> HTTP {e.code}: {detail}") from None
 
 
-    def create_database():
+    def create_database(name, dbname):
         """POST /api/database; Metabase tests the DuckFlight connection first.
         Right after a fresh RustFS table bucket, DuckDB's catalog calls can
         fail for minutes (RustFS nodes answer 400 'not table-enabled' until
@@ -88,7 +92,7 @@ data:
             "details": {
                 "host": env("DUCKFLIGHT_HOST"),
                 "port": int(env("DUCKFLIGHT_PORT", "5433")),
-                "dbname": env("DUCKFLIGHT_DBNAME", "datalake"),
+                "dbname": dbname,
                 "user": env("DUCKFLIGHT_USER"),
                 "password": env("DUCKFLIGHT_PASSWORD"),
                 # self-signed cert, regenerated per duckdb pod: encrypt,
@@ -160,12 +164,14 @@ data:
         dbs = call("GET", "/api/database")
         if isinstance(dbs, dict):
             dbs = dbs.get("data", [])
-        if any(d.get("name") == name for d in dbs):
-            print(f"⏭  Metabase: database '{name}' already exists — skipping")
-        else:
-            created = create_database()
+        existing = {d.get("name") for d in dbs}
+        for name, dbname in databases:
+            if name in existing:
+                print(f"⏭  Metabase: database '{name}' already exists — skipping")
+                continue
+            created = create_database(name, dbname)
             print(f"✅ Metabase: added database '{name}' (id {created.get('id')}) → "
-                  f"{env('DUCKFLIGHT_HOST')}:{env('DUCKFLIGHT_PORT')}/{env('DUCKFLIGHT_DBNAME')}")
+                  f"{env('DUCKFLIGHT_HOST')}:{env('DUCKFLIGHT_PORT')}/{dbname}")
     except Refused as e:
         print(f"❌ Metabase: {e}")
         sys.exit(1)

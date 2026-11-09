@@ -151,6 +151,40 @@ data:
 
     chmod 600 /runtime/duckflight.toml
 
+    #
+    # Lakekeeper `lakehouse` catalog — attached only when reachable.
+    #
+    # An ATTACH that fails in init.sql stops DuckDB from starting, which
+    # would take the `datalake` endpoint down with it. So probe the
+    # warehouse here (its REST config endpoint answers 200 only once the
+    # warehouse exists) and hand init.sql either the ATTACH or a no-op.
+    # CI restarts duckdb after Job/rustfs-bootstrap when this pod started
+    # before the warehouse existed (fresh deploys).
+    #
+    LAKEHOUSE_SQL=/runtime/attach-lakehouse.sql
+    echo "-- lakehouse: not attached (Lakekeeper warehouse unreachable at pod start)" > "${LAKEHOUSE_SQL}"
+    if [ -n "${LAKEKEEPER_URL:-}" ] && [ -n "${LAKEKEEPER_WAREHOUSE:-}" ]; then
+      _waited=0
+      while [ "${_waited}" -lt "${LAKEKEEPER_WAIT_SECONDS:-90}" ]; do
+        if wget -q -T 5 -O /dev/null "${LAKEKEEPER_URL}/catalog/v1/config?warehouse=${LAKEKEEPER_WAREHOUSE}" 2>/dev/null; then
+          cat > "${LAKEHOUSE_SQL}" <<EOF
+    ATTACH '${LAKEKEEPER_WAREHOUSE}' AS ${LAKEKEEPER_WAREHOUSE} (
+        TYPE ICEBERG,
+        URI '${LAKEKEEPER_URL}/catalog',
+        AUTHORIZATION_TYPE 'none',
+        ACCESS_DELEGATION_MODE 'none'
+    );
+    EOF
+          echo "✅ Lakekeeper warehouse '${LAKEKEEPER_WAREHOUSE}' reachable: will be attached" >&2
+          break
+        fi
+        sleep 5
+        _waited=$((_waited + 5))
+      done
+      grep -q "^ATTACH" "${LAKEHOUSE_SQL}" || \
+        echo "⚠️  Lakekeeper warehouse '${LAKEKEEPER_WAREHOUSE}' unreachable after ${_waited}s: starting without it" >&2
+    fi
+
   init.sql: |
     INSTALL httpfs;
     INSTALL iceberg;
@@ -217,6 +251,13 @@ data:
         ACCESS_DELEGATION_MODE 'none',
         SUPPORT_NESTED_NAMESPACES true
     );
+
+    -- Lakekeeper REST catalog (`lakehouse` warehouse on s3://lakehouse):
+    -- the ATTACH or a no-op, decided by the init container (see
+    -- generate-config.sh). Data files are read with the rustfs_s3 secret
+    -- above (unscoped, so it also covers s3://lakehouse); Lakekeeper vends
+    -- no credentials.
+    .read /runtime/attach-lakehouse.sql
 
     --
     -- DuckFlight PostgreSQL endpoint
