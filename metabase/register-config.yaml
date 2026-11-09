@@ -124,6 +124,24 @@ data:
                 time.sleep(15)
 
 
+    def catalog_ready(probe_id, dbname, wait=int(env("METABASE_CATALOG_WAIT_SECONDS", "480"))):
+        """True once duckdb has a catalog named dbname, asked through the
+        already-registered probe database (DuckDB SQL over DuckFlight)."""
+        sql = f"SELECT count(*) FROM duckdb_databases() WHERE database_name = '{dbname}'"
+        until = time.time() + wait
+        while True:
+            try:
+                res = call("POST", "/api/dataset", {"database": probe_id, "type": "native",
+                                                     "native": {"query": sql}}, timeout=120)
+                if res.get("status") == "completed" and res["data"]["rows"][0][0] > 0:
+                    return True
+            except Refused:
+                pass
+            if time.time() > until:
+                return False
+            print(f"   … waiting for duckdb catalog '{dbname}'")
+            time.sleep(15)
+
     # Metabase restarts alongside this Job on an apply: wait up to 10 min
     deadline = time.time() + 600
     while True:
@@ -164,14 +182,29 @@ data:
         dbs = call("GET", "/api/database")
         if isinstance(dbs, dict):
             dbs = dbs.get("data", [])
-        existing = {d.get("name") for d in dbs}
+        by_name = {d.get("name"): d for d in dbs}
+        probe = None   # id of the first database (Lake/datalake, always attached)
         for name, dbname in databases:
-            if name in existing:
-                print(f"⏭  Metabase: database '{name}' already exists — skipping")
+            # DuckFlight silently falls back to the default catalog for an
+            # unknown dbname, so a database whose catalog isn't attached
+            # would "work" while showing the wrong tables. Wait until duckdb
+            # really has it (it may be restarting to attach it).
+            if probe is not None and not catalog_ready(probe, dbname):
+                print(f"⚠️  Metabase: duckdb has no catalog '{dbname}' (waited {env('METABASE_CATALOG_WAIT_SECONDS', '480')}s) — "
+                      f"{'left' if name in by_name else 'not adding'} '{name}' as is")
                 continue
-            created = create_database(name, dbname)
-            print(f"✅ Metabase: added database '{name}' (id {created.get('id')}) → "
-                  f"{env('DUCKFLIGHT_HOST')}:{env('DUCKFLIGHT_PORT')}/{dbname}")
+            if name in by_name:
+                db = by_name[name]
+                # re-read its schema: an earlier sync may have run while the
+                # catalog was missing (cheap — schema only, no scans)
+                call("POST", f"/api/database/{db['id']}/sync_schema", {})
+                print(f"⏭  Metabase: database '{name}' already exists — schema sync requested")
+            else:
+                db = create_database(name, dbname)
+                print(f"✅ Metabase: added database '{name}' (id {db.get('id')}) → "
+                      f"{env('DUCKFLIGHT_HOST')}:{env('DUCKFLIGHT_PORT')}/{dbname}")
+            if probe is None:
+                probe = db["id"]
     except Refused as e:
         print(f"❌ Metabase: {e}")
         sys.exit(1)
