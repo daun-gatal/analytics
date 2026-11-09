@@ -30,6 +30,9 @@ data:
   # Plain bucket (NOT table-enabled) for the Polaris `lakehouse` catalog —
   # its catalog is Polaris (polaris module), not RustFS's built-in one.
   LAKEHOUSE_BUCKET: lakehouse
+  # Plain bucket for Apache Paimon (filesystem catalog, written by BeziSync's
+  # Flink CDC engine: bezisync-lab's `analytics-paimon` destination).
+  PAIMON_BUCKET: paimon
   AWS_DEFAULT_REGION: us-east-1
   bootstrap.sh: |
     #!/bin/sh
@@ -213,6 +216,12 @@ data:
     echo "▶ Ensuring Polaris catalog bucket '${LAKEHOUSE_BUCKET}' exists (plain S3)"
     if ! with_retries 6 create_bucket "${LAKEHOUSE_BUCKET}"; then
         echo "❌ Could not ensure bucket '${LAKEHOUSE_BUCKET}'" >&2
+        exit 1
+    fi
+
+    echo "▶ Ensuring Paimon bucket '${PAIMON_BUCKET}' exists (plain S3)"
+    if ! with_retries 6 create_bucket "${PAIMON_BUCKET}"; then
+        echo "❌ Could not ensure bucket '${PAIMON_BUCKET}'" >&2
         exit 1
     fi
 

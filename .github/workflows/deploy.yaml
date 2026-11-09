@@ -417,11 +417,13 @@ jobs:
           gen_secret polaris polaris-root client-id=root client-secret="$(openssl rand -hex 24)"
           gen_secret polaris polaris-duckdb client-id=duckdb client-secret="$(openssl rand -hex 24)"
           gen_secret polaris polaris-bezisync client-id=bezisync client-secret="$(openssl rand -hex 24)"
+          gen_secret polaris polaris-maintenance client-id=maintenance client-secret="$(openssl rand -hex 24)"
           # Polaris Console login (principal `admin`, role service_admin). Read it with:
           #   kubectl get secret polaris-admin -n polaris -o jsonpath='{.data.client-secret}' | base64 -d
           gen_secret polaris polaris-admin client-id=admin client-secret="$(openssl rand -hex 24)"
           copy_secret rustfs-polaris rustfs polaris      # Polaris's metadata writes
           copy_secret polaris-duckdb polaris analytics   # duckdb ATTACH lakehouse
+          copy_secret polaris-maintenance polaris analytics  # nightly lakehouse maintenance
           # BeziSync destinations are registered by bezisync-lab now: drop the
           # admin-login copies earlier deploys left for the registration Jobs.
           for NS in rustfs polaris; do

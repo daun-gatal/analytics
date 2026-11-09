@@ -129,6 +129,7 @@ flowchart TD
 | RustFS endpoint | `rustfs-svc.rustfs.svc.cluster.local:9000` (S3 + Iceberg REST `/iceberg`) |
 | Default bucket | `datalake` — created and enabled as an S3 table bucket by `Job/rustfs-bootstrap` on every rustfs/all apply (RustFS built-in catalog) |
 | Lakehouse bucket | `lakehouse` — plain bucket, catalog = **Apache Polaris** 1.8.0 (`http://polaris.polaris.svc.cluster.local:8181/api/catalog`, catalog `lakehouse`, OAuth2 client credentials) |
+| Paimon bucket | `paimon` — plain bucket for Apache Paimon's filesystem catalog, written by BeziSync's Flink CDC engine (bezisync-lab's `analytics-paimon` destination); RustFS user `bezisync` has object access |
 | Object storage | RustFS chart v1.0.4, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
 | Scaling | duckdb: HPA 1–3 replicas (CPU 65%) + VPA memory 2–6Gi (InPlaceOrRecreate) — `memory_limit` = 85% × request via the Downward API |
 | Exposure | Tailscale: `metabase` and `polaris-console` always; `duckdb` / `rustfs` opt-in per deploy (`tailscale_expose`) |
@@ -268,6 +269,7 @@ The `polaris/` module runs [Apache Polaris](https://polaris.apache.org) **1.8.0*
   |---|---|---|---|
   | `duckdb` | `lakehouse_reader` → `lakehouse.reader` | list + read namespaces, tables, views | `polaris-duckdb` (also copied to ns `analytics`) |
   | `bezisync` | `lakehouse_writer` → `lakehouse.writer` | reader + create namespaces/tables, commit; **no drop** | `polaris-bezisync` |
+  | `maintenance` | `lakehouse_writer` → `lakehouse.writer` | the same: the nightly [maintenance](#iceberg-table-maintenance) (compaction, snapshot expiry, retention) | `polaris-maintenance` (also copied to ns `analytics`) |
   | `admin` | `service_admin` (built-in) | everything — the **console login** | `polaris-admin` |
   | `root` | `service_admin` (realm bootstrap) | everything — used only by the setup Job | `polaris-root` |
 
@@ -301,16 +303,24 @@ The `polaris/` module runs [Apache Polaris](https://polaris.apache.org) **1.8.0*
 
 ## Iceberg table maintenance
 
-`maintenance/` runs Apache Iceberg table maintenance as two Kubernetes CronJobs in ns `analytics`, driven by a **Spark local-mode** engine in a custom image built by CI. DuckDB can't do this — its `iceberg` extension is read-only — so the maintenance job talks to the same RustFS REST catalog (SigV4) and S3 endpoint directly, using the *same* env facts (`duckdb-settings` ConfigMap + `rustfs-credentials` Secret). No new secrets, no new services.
+`maintenance/` runs Apache Iceberg table maintenance as two Kubernetes CronJobs in ns `analytics`, driven by a **Spark local-mode** engine in a custom image built by CI. DuckDB can't do this — its `iceberg` extension is read-only — so the maintenance job talks to the catalogs and S3 directly:
+
+* **`datalake`** (RustFS built-in catalog, SigV4), with the *same* env facts as DuckDB (`duckdb-settings` ConfigMap + `rustfs-credentials` Secret).
+* **`lakehouse`** (Polaris, OAuth2) as Polaris principal **`maintenance`** (`lakehouse.writer`: commits, no drops; `Secret/polaris-maintenance`, copied by CI to ns `analytics`). Without that Secret the lakehouse is skipped, with a notice.
 
 | CronJob | Schedule (UTC) | What it runs, per table |
 |---|---|---|
-| `iceberg-maintenance-daily` | `0 2 * * *` | `rewrite_data_files` (bin-pack to target size) → `rewrite_manifests` → `expire_snapshots` → `remove_orphan_files` (72h grace window) |
+| `iceberg-maintenance-daily` | `0 2 * * *` | row retention (`MAINT_ROW_RETENTION`, below) → `rewrite_data_files` (bin-pack to target size) → `rewrite_manifests` → `expire_snapshots` → `remove_orphan_files` (72h grace window) |
 
-* **Discovery is dynamic** — the script lists all namespaces/tables via `SHOW NAMESPACES/TABLES` on each run; no table list to maintain
+* **Discovery is dynamic** — the script lists all namespaces/tables of both catalogs via `SHOW NAMESPACES/TABLES` on each run; no table list to maintain
+* **Row retention** keeps what the public BeziSync lab writes bounded. `MAINT_ROW_RETENTION` (default `datalake.cdc=14d,lakehouse.cdc=14d:deleted`) lists `<catalog>.<namespace>=<age>[:deleted]`:
+  * `datalake.cdc=14d`: the append-only change logs (`analytics-lake`) lose rows whose change (`__source_ts_ms`, BeziSync's Debezium writer) is older than 14 days. They are partitioned by that day, so old days go whole.
+  * `lakehouse.cdc=14d:deleted`: the upsert tables (`analytics-lakehouse`) lose only the **deleted-row markers** (`__deleted = 'true'`) older than 14 days. Live rows are never touched, however old.
+  * Tables without `__source_ts_ms` (the generator's, Flink CDC's) are left alone. A malformed entry fails the run rather than guessing what to delete.
 * **Per-table isolation** — one failing table doesn't block the others; the job exits non-zero if anything failed
-* **Configurable** — edit `schedule:` in `maintenance/cronjob.yaml`; operation tunables are env keys in `maintenance/configmap.yaml` (`MAINT_TARGET_FILE_SIZE`, `MAINT_SNAPSHOT_MAX_AGE`, `MAINT_RETAIN_LAST`, `MAINT_ORPHAN_MIN_AGE`)
+* **Configurable** — edit `schedule:` in `maintenance/cronjob.yaml`; operation tunables are env keys in `maintenance/configmap.yaml` (`MAINT_TARGET_FILE_SIZE`, `MAINT_SNAPSHOT_MAX_AGE`, `MAINT_RETAIN_LAST`, `MAINT_ORPHAN_MIN_AGE`, `MAINT_ROW_RETENTION`, `MAINT_POLARIS_URL`)
 * **Light footprint** — `requests 500m/1Gi`, `limits 2 CPU/2Gi`, `local[2]`, runs at 02:00 when the cluster is idle; `concurrencyPolicy: Forbid`
+* **Exits on its own:** on this cluster the JVM's shutdown never completed after the work was done (also with the earlier script). The pod stayed `Running`, and `Forbid` then blocked every later run. The likely cause is the node's AppArmor profile, which denies signals between processes; the job was verified to complete when run unconfined. Instead of loosening that, the script **halts the JVM** itself once Spark has stopped (`finish()`), with the run's exit code. Only shutdown hooks are skipped (temp-dir cleanup of a throwaway pod). The Spark UI is off too (`spark.ui.enabled=false`); a nightly batch has no use for it.
 
 Image: `ghcr.io/daun-gatal/analytics/iceberg-maintenance` — `apache/spark:4.0.4-scala2.13-java17-python3-ubuntu` + `iceberg-spark-runtime-4.0_2.13` + `iceberg-aws-bundle` (both 1.11.0, pinned via ARGs in `maintenance/image/Dockerfile`). The maintenance script itself lives in the ConfigMap, so tuning it never needs an image rebuild.
 
