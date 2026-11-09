@@ -72,8 +72,13 @@ flowchart LR
     SETTINGS -. env .-> MAINT
     MAINT == "Iceberg REST SIGV4 + S3 FileIO" ==> RSVC
     RSVC --> STS
-    LK["Deployment/lakekeeper v0.15.0<br/>Iceberg REST :8181/catalog<br/>warehouse lakehouse"] == "S3 (lakekeeper user)" ==> RSVC
-    LK --> LKDB[("StatefulSet/lakekeeper-db<br/>Postgres 18 · longhorn 5Gi")]
+    subgraph POLARIS["namespace: polaris"]
+        PL["Deployment/polaris 1.8.0<br/>Iceberg REST :8181/api/catalog<br/>catalog lakehouse · OAuth2 principals"]
+        PLDB[("StatefulSet/polaris-db<br/>Postgres 18 · longhorn 5Gi")]
+    end
+    DUCK == "Iceberg REST, OAuth2 (principal duckdb)" ==> PL
+    PL == "S3 (polaris user)" ==> RSVC
+    PL --> PLDB
 ```
 
 * DuckDB pods are **disposable** — the only state is in the lake. The HPA scales `duckdb` 1→3 on CPU pressure; the VPA owns memory sizing (2–6Gi, `InPlaceOrRecreate` — request raises resize the pod in place, no restart), and each pod re-derives its `memory_limit` from the request at start.
@@ -95,7 +100,7 @@ sequenceDiagram
     DUCK->>DUCK: SET memory_limit = 85% of request<br/>(Downward API env → getenv())
     DUCK->>DUCK: CREATE SECRET rustfs_s3<br/>all values via getenv()
     DUCK->>RFS: ATTACH datalake<br/>Iceberg REST endpoint from env
-    Note over INIT,DUCK: lakehouse: the init container probes Lakekeeper's<br/>warehouse (≤90s) and writes the ATTACH or a no-op,<br/>which init.sql .reads — a Lakekeeper outage never<br/>stops duckdb from starting
+    Note over INIT,DUCK: lakehouse: the init container signs in to Polaris<br/>and probes the catalog (≤90s), then writes the ATTACH<br/>or a no-op, which init.sql .reads — a Polaris outage<br/>never stops duckdb from starting
     DUCK->>DUCK: duckflight_pg_serve 0.0.0.0:5433
     DUCK->>DUCK: duckflight_flight_serve 0.0.0.0:31337
     Note over DUCK: Postgres wire + FlightSQL live,<br/>lake is one query away
@@ -119,11 +124,11 @@ flowchart TD
 
 | Aspect | Value |
 |---|---|
-| Namespaces | `analytics` (duckdb, metabase) · `rustfs` (object store) |
+| Namespaces | `analytics` (duckdb, metabase) · `rustfs` (object store) · `polaris` (Iceberg REST catalog) |
 | DuckDB endpoints | `5433` Postgres wire · `31337` Arrow Flight SQL |
 | RustFS endpoint | `rustfs-svc.rustfs.svc.cluster.local:9000` (S3 + Iceberg REST `/iceberg`) |
 | Default bucket | `datalake` — created and enabled as an S3 table bucket by `Job/rustfs-bootstrap` on every rustfs/all apply (RustFS built-in catalog) |
-| Lakehouse bucket | `lakehouse` — plain bucket, catalog = **Lakekeeper** v0.15.0 (`http://lakekeeper.rustfs.svc.cluster.local:8181/catalog`, warehouse `lakehouse`) |
+| Lakehouse bucket | `lakehouse` — plain bucket, catalog = **Apache Polaris** 1.8.0 (`http://polaris.polaris.svc.cluster.local:8181/api/catalog`, catalog `lakehouse`, OAuth2 client credentials) |
 | Object storage | RustFS chart v1.0.4, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
 | Scaling | duckdb: HPA 1–3 replicas (CPU 65%) + VPA memory 2–6Gi (InPlaceOrRecreate) — `memory_limit` = 85% × request via the Downward API |
 | Exposure | Tailscale: `metabase` always; `duckdb` / `rustfs` opt-in per deploy (`tailscale_expose`) |
@@ -138,7 +143,7 @@ flowchart TD
 ```
 analytics/                     # repo root for manifests (this dir)
 ├── namespace.yaml             # Namespace/analytics
-├── kustomization.yaml         # root — order: namespace -> duckdb -> rustfs -> maintenance -> generator -> metabase
+├── kustomization.yaml         # root — order: namespace -> duckdb -> rustfs -> polaris -> maintenance -> generator -> metabase
 ├── duckdb/                    # DuckDB + DuckFlight (Postgres/FlightSQL endpoints)
 │   ├── kustomization.yaml
 │   ├── config-settings.yaml         # duckdb-settings ConfigMap (runtime facts)
@@ -152,9 +157,15 @@ analytics/                     # repo root for manifests (this dir)
 │   ├── namespace.yaml               # Namespace/rustfs
 │   ├── helm.yaml                    # chart values (distributed 4x1, longhorn)
 │   ├── bootstrap-config.yaml        # rustfs-bootstrap-config: bootstrap.sh + RUSTFS_ENDPOINT/BUCKET_NAME
-│   ├── bezisync-config.yaml         # RustFS policies, iam.sh, setup-lakekeeper.py, register-bezisync.py + knobs
-│   ├── lakekeeper.yaml              # Lakekeeper (Iceberg REST catalog) + its Postgres
-│   └── bootstrap-job.yaml           # Job/rustfs-bootstrap — buckets, users, Lakekeeper warehouse, BeziSync destinations, per apply
+│   ├── bezisync-config.yaml         # RustFS policies, iam.sh, register-bezisync.py (datalake) + knobs
+│   └── bootstrap-job.yaml           # Job/rustfs-bootstrap — buckets, BeziSync/Polaris users, datalake destination, per apply
+├── polaris/                   # Apache Polaris Iceberg REST catalog (chart 1.8.0)
+│   ├── kustomization.yaml           # Namespace/polaris + helmCharts (repo downloads.apache.org/polaris)
+│   ├── namespace.yaml               # Namespace/polaris
+│   ├── helm.yaml                    # chart values: relational-jdbc, token key, RustFS keys, schema + realm bootstrap init containers
+│   ├── postgres.yaml                # polaris-db: headless Service + Postgres 18 StatefulSet (metastore)
+│   ├── setup-config.yaml            # polaris-setup-config: setup-polaris.py, register-bezisync.py (lakehouse) + knobs
+│   └── setup-job.yaml               # Job/polaris-setup — catalog, roles, principals, lakehouse destination, per apply
 ├── maintenance/               # Iceberg table maintenance (Spark local-mode CronJobs)
 │   ├── kustomization.yaml           # pins the CI-built ghcr.io image
 │   ├── configmap.yaml               # maintenance-config: maintenance.py + MAINT_* tunables
@@ -245,36 +256,46 @@ kubectl logs -f job/rustfs-bootstrap -n rustfs
 
 DuckDB's `ATTACH 'datalake'` and the generators' `create_namespace_if_not_exists` need nothing else — Iceberg namespaces and tables self-heal on first write.
 
-## Lakekeeper catalog (`lakehouse` warehouse)
+## Polaris catalog (`lakehouse`)
 
-`rustfs/lakekeeper.yaml` runs [Lakekeeper](https://docs.lakekeeper.io) **v0.15.0**, an Iceberg REST catalog, in ns `rustfs` with its own Postgres (`lakekeeper-db`, Longhorn 5Gi). It serves the warehouse **`lakehouse`** on the plain bucket **`s3://lakehouse`**. RustFS is just object storage there. The older `datalake` table bucket keeps RustFS's built-in catalog, untouched.
+The `polaris/` module runs [Apache Polaris](https://polaris.apache.org) **1.8.0** (official Helm chart) in its own namespace **`polaris`**, with its own Postgres (`polaris-db`, Longhorn 5Gi, `relational-jdbc` persistence). It serves the Iceberg catalog **`lakehouse`** on the plain bucket **`s3://lakehouse`**. RustFS is just object storage there. The older `datalake` table bucket keeps RustFS's built-in catalog, untouched.
 
-* **Catalog URI:** `http://lakekeeper.rustfs.svc.cluster.local:8181/catalog`, warehouse `lakehouse`. Use it from PyIceberg, Spark, DuckDB or BeziSync.
-* **In DuckDB / Metabase:** duckdb attaches it as catalog **`lakehouse`** when the warehouse is reachable at pod start (`LAKEKEEPER_URL` / `LAKEKEEPER_WAREHOUSE` in `duckdb-settings`). The init container probes `…/catalog/v1/config?warehouse=lakehouse` for up to 90 s, then writes either the `ATTACH` or a no-op that `init.sql` `.read`s, so a Lakekeeper outage never keeps duckdb (and `datalake`) down. After `rustfs-bootstrap`, CI restarts duckdb once unless every duckdb pod's init log says `will be attached`. That covers pods that started before the warehouse existed, and pods still running an older init script (ConfigMap edits alone don't restart pods). Query it over DuckFlight with **dbname `lakehouse`**, i.e. Metabase database **`Lakehouse`**.
-* **Why:** a real REST catalog gives upserts and table format v3 (BeziSync's RustFS preset is append-only, v2), and avoids the built-in catalog's node-sync issue above.
-* **Auth:** none (authz allow-all). Any pod in the cluster can use the catalog. Lakekeeper vends **no** credentials (STS and remote signing are off), so every client reads and writes data files with its own scoped RustFS user.
-* **Setup:** `Job/rustfs-bootstrap` creates the bucket, Lakekeeper's RustFS user (`lakekeeper`, policy `lakekeeper-warehouse`: object access on `lakehouse` only), bootstraps Lakekeeper once, and creates the warehouse if it's missing.
-* **Secrets:** CI generates `lakekeeper-secrets` (DB password + secret-store encryption key) and `rustfs-lakekeeper` once, never rotated. The encryption key protects the warehouse storage credential kept in Lakekeeper's DB.
-* Validated locally (2026-11-09): Lakekeeper read-only as UID 65532, warehouse creation with the scoped user; as the `bezisync` user, PyIceberg create, append, **upsert** and scan; DuckDB 2.0.0 reads through Lakekeeper.
+* **Catalog URI:** `http://polaris.polaris.svc.cluster.local:8181/api/catalog`, warehouse `lakehouse`. Token URL `…/api/catalog/v1/oauth/tokens`, scope `PRINCIPAL_ROLE:ALL`.
+* **Auth:** Polaris's own principals (OAuth2 client credentials) and role grants, set up by `Job/polaris-setup`:
+
+  | Principal | Principal role → catalog role | Privileges | Secret |
+  |---|---|---|---|
+  | `duckdb` | `lakehouse_reader` → `lakehouse.reader` | list + read namespaces, tables, views | `polaris-duckdb` (also copied to ns `analytics`) |
+  | `bezisync` | `lakehouse_writer` → `lakehouse.writer` | reader + create namespaces/tables, commit; **no drop** | `polaris-bezisync` |
+  | `root` | `service_admin` (realm bootstrap) | everything — used only by the setup Job | `polaris-root` |
+
+  Add a client by adding a `PRINCIPALS` entry in `polaris/setup-config.yaml` plus its Secret in `deploy.yaml`.
+* **Storage:** RustFS has no STS, so the catalog is created with `stsUnavailable`. Polaris vends **no** credentials (a vending request is refused with HTTP 400, and `loadTable` returns only the endpoint settings). Polaris writes table metadata with its own RustFS user `polaris` (policy `polaris-warehouse`, objects on `lakehouse` only). Every client reads and writes data files with its own scoped RustFS user and must not request credential vending: DuckDB uses `ACCESS_DELEGATION_MODE 'none'`, BeziSync uses `storage: s3`, and PyIceberg needs `header.X-Iceberg-Access-Delegation: ""`.
+* **In DuckDB / Metabase:** duckdb attaches it as catalog **`lakehouse`** (`POLARIS_URL` / `POLARIS_CATALOG` in `duckdb-settings`, credentials from `Secret/polaris-duckdb`). The init container signs in and probes `…/v1/config?warehouse=lakehouse` for up to 90 s, then writes either the `ATTACH` or a no-op that `init.sql` `.read`s, so a Polaris outage never keeps duckdb (and `datalake`) down. The client secret stays in env: the `ATTACH` reads it with `getenv()`. DuckDB renews its token by itself when it expires. After `polaris-setup`, CI restarts duckdb once unless every duckdb pod's init log says `Polaris catalog … will be attached`. Query it over DuckFlight with **dbname `lakehouse`**, i.e. Metabase database **`Lakehouse`**.
+* **Why:** a real REST catalog gives upserts and table format v3 (BeziSync's RustFS preset is append-only, v2), avoids the built-in catalog's node-sync issue above, and Polaris adds per-client permissions without an extra identity provider or authorization service.
+* **Bootstrap:** two init containers on the Polaris pod run on every start, before the server: `CREATE SCHEMA IF NOT EXISTS polaris_schema`, then the admin tool's realm `bootstrap` (prints `already bootstrapped; skipping` after the first time). Polaris never starts against an un-bootstrapped database.
+* **Setup:** `Job/polaris-setup` (every polaris/all apply) creates or updates the catalog, its roles and grants, and the principals. It pins each principal's credentials to its Secret, verifies every principal end to end, then registers the BeziSync `lakehouse` destination. The bucket and Polaris's RustFS user come from `Job/rustfs-bootstrap`.
+* **Secrets:** CI generates once, never rotated: `polaris-db` (must keep matching the volume), `polaris-root` (fixed at the realm's first bootstrap), `polaris-token-key` (signs access tokens; a fixed key keeps tokens valid across restarts), `polaris-duckdb`, `polaris-bezisync`, and `rustfs-polaris` (ns `rustfs`, copied to `polaris`).
+* **No UI:** the Polaris Console publishes no container image, so it isn't deployed. Use the management API (`/api/management/v1`) with the root credentials.
+* Validated in a scratch namespace (2026-11-10, Polaris 1.8.0 + RustFS 1.0.4): rerunnable bootstrap and setup; PyIceberg 0.10.0 as `bezisync` create, append and add-column, with drop table/namespace denied; `duckdb` read with create denied; no credentials vended; DuckDB 2.0.0 `ATTACH` with token renewal across expiry; BeziSync draft check of the `lakehouse` destination: Ready.
 
 ## BeziSync destinations (auto-registered)
 
-After the bucket steps, the same `rustfs-bootstrap` Job wires the lake into [BeziSync](https://github.com/daun-gatal/bezisync) (CDC on Debezium Server). Config and scripts live in `rustfs/bezisync-config.yaml`:
+Two deploy-time Jobs wire the lake into [BeziSync](https://github.com/daun-gatal/bezisync) (CDC on Debezium Server), each registering the destination for the catalog its module owns:
 
-1. **`iam`** (`rustfs/rc` image): upserts the RustFS policies and users. `bezisync` (policy `bezisync-iceberg`) gets Iceberg catalog actions and objects on `datalake`, plus plain object access on `lakehouse`, with no drop/rename and no other bucket. `lakekeeper` gets objects on `lakehouse` only. CI generates their secrets once in-cluster.
-2. **`lakekeeper-setup`**: bootstraps Lakekeeper and creates the `lakehouse` warehouse if it's missing (see above).
-3. **`bezisync-register`**: creates each destination in BeziSync project **`playground`** that doesn't exist yet (`managed: true`, namespace `cdc`), then runs BeziSync's readiness check:
+1. **`iam`** (`Job/rustfs-bootstrap`, `rustfs/rc` image, `rustfs/bezisync-config.yaml`): upserts the RustFS policies and users. `bezisync` (policy `bezisync-iceberg`) gets Iceberg catalog actions and objects on `datalake`, plus plain object access on `lakehouse`, with no drop/rename and no other bucket. `polaris` gets objects on `lakehouse` only. CI generates their secrets once in-cluster.
+2. **`bezisync-register`**, in both Jobs: creates the destination in BeziSync project **`playground`** if it doesn't exist yet (`managed: true`, namespace `cdc`), then runs BeziSync's readiness check:
 
-   | Destination | Catalog | Writes |
-   |---|---|---|
-   | `rustfs-lake` | RustFS built-in, `datalake` table bucket (preset *RustFS S3 Tables (preview)*) | append-only change log, v2 |
-   | `lakehouse` | Lakekeeper, `lakehouse` warehouse (preset *Iceberg REST catalog*, auth none) | upserts / deletes, v2 or v3 |
+   | Destination | Registered by | Catalog | Writes |
+   |---|---|---|---|
+   | `rustfs-lake` | `Job/rustfs-bootstrap` (`rustfs/bezisync-config.yaml`) | RustFS built-in, `datalake` table bucket (preset *RustFS S3 Tables (preview)*) | append-only change log, v2 |
+   | `lakehouse` | `Job/polaris-setup` (`polaris/setup-config.yaml`) | Polaris, catalog `lakehouse` (preset *Iceberg REST catalog*, OAuth2 as principal `bezisync`) | upserts / deletes, v2 or v3 |
 
-   * **No token needed:** it signs in as BeziSync's **bootstrap admin**. On every run CI copies that login from BeziSync's own `bezisync/bezisync-secrets` (`BEZISYNC_BOOTSTRAP_ADMIN_PASSWORD`; email from the Secret or the api Deployment's env, else BeziSync's default `admin@bezisync.local`) into `Secret/bezisync-login` (ns `rustfs`). The Job signs out when done.
+   * **No token needed:** it signs in as BeziSync's **bootstrap admin**. On every run CI copies that login from BeziSync's own `bezisync/bezisync-secrets` (`BEZISYNC_BOOTSTRAP_ADMIN_PASSWORD`; email from the Secret or the api Deployment's env, else BeziSync's default `admin@bezisync.local`) into `Secret/bezisync-login` (ns `rustfs` and `polaris`). The Job signs out when done.
    * **Skips** each connection that already exists (it is never modified), or everything when BeziSync isn't installed (no login Secret).
    * BeziSync unreachable, or the bootstrap admin can't sign in (its password was changed in the UI) → warning, the deploy continues. Unknown project or a rejected config → the Job, and the deploy, fail. The log lists any readiness check that didn't pass.
 
-Knobs (`rustfs-bezisync-config`): `BEZISYNC_API_URL`, `BEZISYNC_PROJECT`, `BEZISYNC_CONNECTION_NAME`, `BEZISYNC_LAKEHOUSE_CONNECTION_NAME`, `BEZISYNC_ICEBERG_NAMESPACE`, `LAKEKEEPER_URL`, `LAKEKEEPER_WAREHOUSE`.
+Knobs: `rustfs-bezisync-config` (`BEZISYNC_API_URL`, `BEZISYNC_PROJECT`, `BEZISYNC_CONNECTION_NAME`, `BEZISYNC_ICEBERG_NAMESPACE`) and `polaris-setup-config` (the same plus `BEZISYNC_LAKEHOUSE_CONNECTION_NAME`, `POLARIS_CLUSTER_URL`, `RUSTFS_CLUSTER_ENDPOINT`).
 
 ## Iceberg table maintenance
 
@@ -341,7 +362,7 @@ kubectl logs -f job/generator-manual -n analytics
 | Metabase database | DuckFlight dbname | Catalog |
 |---|---|---|
 | `Lake` | `datalake` | RustFS built-in catalog (`datalake` table bucket): generator / maintenance tables |
-| `Lakehouse` | `lakehouse` | Lakekeeper (`lakehouse` bucket): BeziSync's `lakehouse` destination |
+| `Lakehouse` | `lakehouse` | Polaris (`lakehouse` bucket): BeziSync's `lakehouse` destination |
 
 (`METABASE_DATABASES` in `metabase/register-config.yaml`.)
 
@@ -373,11 +394,11 @@ Validated locally on 2026-11-09 (DuckDB 2.0.0 + RustFS 1.0.4 + Metabase v0.65.3.
 * VPA controllers for the duckdb VPA — official SIG-autoscaling chart: `helm repo add autoscaler https://kubernetes.github.io/autoscaler && helm install vpa autoscaler/vertical-pod-autoscaler --version 0.13.0`. Without the `verticalpodautoscalers` CRD, `kubectl apply -k duckdb/` fails on the VPA object
 * `longhorn` StorageClass
 * `tailscale` operator with Service annotations `tailscale.com/expose`
-* Namespaces are created by `namespace.yaml` (root) and `rustfs/namespace.yaml`; CI also ensures them idempotently
+* Namespaces are created by `namespace.yaml` (root), `rustfs/namespace.yaml` and `polaris/namespace.yaml`; CI also ensures them idempotently
 
 ## Usage
 
-> **Note:** `rustfs/` uses the helm chart inflator, so builds need `--enable-helm` and the helm binary. `kubectl apply -k` does not support `--enable-helm` — build first, then apply the rendered output (the CI workflow does exactly this):
+> **Note:** `rustfs/` and `polaris/` use the helm chart inflator, so builds need `--enable-helm` and the helm binary. `kubectl apply -k` does not support `--enable-helm` — build first, then apply the rendered output (the CI workflow does exactly this):
 
 ```bash
 kubectl kustomize --enable-helm . > built.yaml
@@ -415,7 +436,7 @@ kubectl apply -k duckdb/
 
 Manual dispatch (also `workflow_call`). Inputs:
 
-* `module`: `all` (root kustomization), `duckdb`, `rustfs`, `maintenance`, `generator`, `metabase`
+* `module`: `all` (root kustomization), `duckdb`, `rustfs`, `polaris`, `maintenance`, `generator`, `metabase`
 * `action`: `apply` | `diff` | `delete` | `dry-run` | `restart` | `logs` | `probe` | `sigprobe` | `trigger` | `repair`
 * `force_rebuild` (boolean, default `false`): build both images even when change detection finds them already up to date
 * `tailscale_expose` (`none` | `duckdb` | `rustfs` | `all`, default `none`): also put those Services on the tailnet for this apply/diff/dry-run (metabase always is). Only Services inside the chosen `module` are affected; see [Tailscale exposure](#tailscale-exposure)
@@ -444,13 +465,14 @@ Required GitHub Secrets:
 * No Secret manifests are stored in the repo — CI creates/updates them from GitHub Secrets on every run (`kubectl create secret ... --dry-run=client -o yaml | kubectl apply -f -`)
 * Exception: `metabase-secrets` is generated in-cluster (`openssl rand`) only when absent and never overwritten — no GitHub Secret, and deliberately not rotatable by re-running CI
 * Also generated once: `metabase-admin` (ns `analytics`, the Metabase admin the register Job sets up and signs in as) and `rustfs-bezisync` (ns `rustfs`, the RustFS user BeziSync writes with). `bezisync-login` (ns `rustfs`) is not generated: CI copies it from BeziSync's bootstrap admin on every run.
-* Rotating `rustfs-bezisync`: delete the Secret, re-apply `module=rustfs` (the Job upserts the user with the new key), then update the secret access key on the BeziSync connection; the registration skips existing connections, so it won't update it for you
+* Rotating `rustfs-bezisync`: delete the Secret, re-apply `module=rustfs` (the Job upserts the user with the new key), then update the secret access key on both BeziSync connections (`rustfs-lake` and `lakehouse`; CI re-copies the Secret to ns `polaris` on every run); the registration skips existing connections, so it won't update it for you
+* Rotating a Polaris principal (`polaris-duckdb` / `polaris-bezisync`): delete the Secret and re-apply `module=polaris`. `Job/polaris-setup` resets the principal to the new pair. Then restart duckdb (`action=restart module=duckdb`), or update the client secret on BeziSync's `lakehouse` connection
 * Rotate: update the GitHub Secret, run this workflow with `action=apply`, then `action=restart` with `module=duckdb` (rustfs picks up creds on its own restart)
 
 ## Maintenance Notes
 
 * 1 file per resource — `git log -- <file>` isolates history
 * duckdb memory sizing is VPA-driven: the request → Downward API env → `init.sql` × 85% is the only place `memory_limit` is set; add no container memory limit and don't hardcode a `SET memory_limit` value
-* Helm chart upgrades: bump `version:` in `rustfs/kustomization.yaml`; helm values live in `rustfs/helm.yaml` only
+* Helm chart upgrades: bump `version:` in `rustfs/kustomization.yaml` / `polaris/kustomization.yaml`; helm values live in each module's `helm.yaml` only. For Polaris, keep the admin-tool tag in `polaris/helm.yaml` (`bootstrap-realm`) equal to the chart's app version
 * Changing `drivesPerNode` on an existing RustFS StatefulSet is not allowed (chart rule) — topologies are fixed after first deploy
 * The `duckdb-settings` ConfigMap is kustomize-managed with static defaults; the sync script's patch is the only external mutation and is re-derived on every `apply`

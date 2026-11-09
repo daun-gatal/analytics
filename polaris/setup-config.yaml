@@ -1,0 +1,373 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: polaris-setup-config
+  namespace: polaris
+data:
+  #
+  # Run by Job/polaris-setup (setup-job.yaml) on every polaris/all apply:
+  #
+  #   setup-polaris.py      (init container `catalog`)
+  #     ensure catalog `lakehouse`, its roles/grants and the principals
+  #     below, with credentials pinned to their CI-generated Secrets.
+  #
+  #   register-bezisync.py  (container `bezisync-register`)
+  #     create BeziSync destination `lakehouse` (Polaris, OAuth2) if
+  #     missing; skips when it exists or BeziSync isn't installed.
+  #
+  # Principals -> principal role -> catalog role (privileges in the script):
+  #   duckdb    lakehouse_reader -> lakehouse.reader  read only
+  #   bezisync  lakehouse_writer -> lakehouse.writer  create + commit, no drop
+  #
+  # The `lakehouse` bucket and Polaris's RustFS user `polaris` are created
+  # by Job/rustfs-bootstrap (rustfs module), which owns buckets and IAM.
+  #
+  POLARIS_URL: http://polaris:8181
+  POLARIS_REALM: POLARIS
+  POLARIS_CATALOG: lakehouse
+  LAKEHOUSE_BUCKET: lakehouse
+  AWS_DEFAULT_REGION: us-east-1
+  # BeziSync runs in another namespace: it needs the service FQDNs
+  POLARIS_CLUSTER_URL: http://polaris.polaris.svc.cluster.local:8181
+  RUSTFS_CLUSTER_ENDPOINT: http://rustfs-svc.rustfs.svc.cluster.local:9000
+  BEZISYNC_API_URL: http://bezisync-api.bezisync.svc.cluster.local:8000
+  BEZISYNC_PROJECT: playground         # project slug
+  BEZISYNC_LAKEHOUSE_CONNECTION_NAME: lakehouse
+  BEZISYNC_ICEBERG_NAMESPACE: cdc      # tables land in lakehouse.cdc.*
+
+  setup-polaris.py: |
+    """Ensure the Polaris `lakehouse` catalog, its roles and its principals.
+
+    Idempotent, re-applied on every deploy (like iam.sh for RustFS):
+      * catalog POLARIS_CATALOG on s3://LAKEHOUSE_BUCKET (RustFS, path-style,
+        no STS: clients bring their own S3 keys) - created, or its storage
+        config updated when it drifted
+      * catalog roles + their grants, principal roles, and the principal ->
+        principal role -> catalog role chain for every PRINCIPALS entry
+      * each principal's client id/secret pinned to the CI-generated Secret
+        (reset only when the stored pair no longer signs in)
+
+    Exit 0 when everything is in place; exit 1 otherwise, since the catalog
+    and its logins are part of the lake this deploy promises.
+    """
+    import json
+    import os
+    import sys
+    import time
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    env = os.environ.get
+    base = env("POLARIS_URL", "").rstrip("/")
+    realm = env("POLARIS_REALM", "POLARIS")
+    catalog = env("POLARIS_CATALOG", "lakehouse")
+    bucket = env("LAKEHOUSE_BUCKET", "lakehouse")
+    mgmt = f"{base}/api/management/v1"
+    token_url = f"{base}/api/catalog/v1/oauth/tokens"
+
+    # Privileges per catalog role. No DROP anywhere: like the RustFS policies,
+    # writers create and commit, they never delete tables or namespaces.
+    READ = [
+        "CATALOG_READ_PROPERTIES",
+        "NAMESPACE_LIST", "NAMESPACE_READ_PROPERTIES",
+        "TABLE_LIST", "TABLE_READ_PROPERTIES", "TABLE_READ_DATA",
+        "VIEW_LIST", "VIEW_READ_PROPERTIES",
+    ]
+    WRITE = READ + [
+        "NAMESPACE_CREATE",
+        "TABLE_CREATE", "TABLE_WRITE_PROPERTIES", "TABLE_WRITE_DATA",
+    ]
+    CATALOG_ROLES = {"reader": READ, "writer": WRITE}
+
+    # principal -> catalog role; credentials come from <PREFIX>_CLIENT_ID/_SECRET
+    PRINCIPALS = [
+        ("duckdb", "reader", "POLARIS_DUCKDB"),
+        ("bezisync", "writer", "POLARIS_BEZISYNC"),
+    ]
+
+
+    class Refused(Exception):
+        def __init__(self, code, msg):
+            super().__init__(msg)
+            self.code = code
+
+
+    def request(method, url, body=None, token=None, form=None, timeout=30):
+        headers = {"Accept": "application/json", "Polaris-Realm": realm}
+        data = None
+        if form is not None:
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+            data = urllib.parse.urlencode(form).encode()
+        elif body is not None:
+            headers["Content-Type"] = "application/json"
+            data = json.dumps(body).encode()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(url, method=method, headers=headers, data=data)
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                raw = resp.read()
+                return json.loads(raw) if raw else None
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:600].decode("utf-8", "replace")
+            raise Refused(e.code, f"{method} {url} -> HTTP {e.code}: {detail}") from None
+
+
+    def sign_in(client_id, client_secret):
+        return request("POST", token_url, form={
+            "grant_type": "client_credentials", "client_id": client_id,
+            "client_secret": client_secret, "scope": "PRINCIPAL_ROLE:ALL"})["access_token"]
+
+
+    def get(path, token):
+        try:
+            return request("GET", mgmt + path, token=token)
+        except Refused as e:
+            if e.code == 404:
+                return None
+            raise
+
+
+    def need(name):
+        value = env(name)
+        if not value:
+            print(f"❌ {name} is not set")
+            sys.exit(1)
+        return value
+
+
+    root_id, root_secret = need("POLARIS_ROOT_CLIENT_ID"), need("POLARIS_ROOT_CLIENT_SECRET")
+
+    # Polaris starts alongside this Job: wait up to 10 min for a root token.
+    deadline = time.time() + 600
+    while True:
+        try:
+            token = sign_in(root_id, root_secret)
+            break
+        except Exception as e:  # not up yet, or (re)starting
+            if time.time() > deadline:
+                print(f"❌ Polaris at {base}: no root token after 10 min ({e})")
+                sys.exit(1)
+            time.sleep(5)
+
+    try:
+        # 1. catalog
+        storage = {
+            "storageType": "S3",
+            "allowedLocations": [f"s3://{bucket}"],
+            "endpoint": need("RUSTFS_CLUSTER_ENDPOINT"),
+            "pathStyleAccess": True,
+            "region": env("AWS_DEFAULT_REGION", "us-east-1"),
+            # RustFS has no STS: Polaris vends no credentials, every client
+            # brings its own scoped RustFS user
+            "stsUnavailable": True,
+        }
+        properties = {"default-base-location": f"s3://{bucket}"}
+        current = get(f"/catalogs/{catalog}", token)
+        if current is None:
+            request("POST", mgmt + "/catalogs", token=token, body={"catalog": {
+                "type": "INTERNAL", "name": catalog,
+                "properties": properties, "storageConfigInfo": storage}})
+            print(f"✅ Polaris: created catalog '{catalog}' on s3://{bucket}")
+        else:
+            have = current.get("storageConfigInfo") or {}
+            if any(have.get(k) != v for k, v in storage.items()):
+                request("PUT", f"{mgmt}/catalogs/{catalog}", token=token, body={
+                    "currentEntityVersion": current["entityVersion"],
+                    "properties": {**(current.get("properties") or {}), **properties},
+                    "storageConfigInfo": storage})
+                print(f"✅ Polaris: updated catalog '{catalog}' storage config")
+            else:
+                print(f"⏭  Polaris: catalog '{catalog}' already up to date")
+
+        # 2. catalog roles + grants (granting an existing privilege is a no-op)
+        for role, privileges in CATALOG_ROLES.items():
+            if get(f"/catalogs/{catalog}/catalog-roles/{role}", token) is None:
+                request("POST", f"{mgmt}/catalogs/{catalog}/catalog-roles", token=token,
+                        body={"catalogRole": {"name": role}})
+            for p in privileges:
+                request("PUT", f"{mgmt}/catalogs/{catalog}/catalog-roles/{role}/grants",
+                        token=token, body={"grant": {"type": "catalog", "privilege": p}})
+            print(f"✅ Polaris: catalog role '{catalog}.{role}' has {len(privileges)} privileges")
+
+        # 3. principals: principal -> principal role -> catalog role
+        for name, role, prefix in PRINCIPALS:
+            client_id, client_secret = need(f"{prefix}_CLIENT_ID"), need(f"{prefix}_CLIENT_SECRET")
+            principal_role = f"{catalog}_{role}"
+            if get(f"/principal-roles/{principal_role}", token) is None:
+                request("POST", mgmt + "/principal-roles", token=token,
+                        body={"principalRole": {"name": principal_role}})
+            request("PUT", f"{mgmt}/principal-roles/{principal_role}/catalog-roles/{catalog}",
+                    token=token, body={"catalogRole": {"name": role}})
+
+            if get(f"/principals/{name}", token) is None:
+                request("POST", mgmt + "/principals", token=token, body={
+                    "principal": {"name": name}, "credentialRotationRequired": False})
+                print(f"✅ Polaris: created principal '{name}'")
+            try:
+                sign_in(client_id, client_secret)
+            except Refused:
+                # pin the credentials to the CI-generated Secret
+                request("POST", f"{mgmt}/principals/{name}/reset", token=token,
+                        body={"clientId": client_id, "clientSecret": client_secret})
+                print(f"✅ Polaris: principal '{name}' credentials set from its Secret")
+            request("PUT", f"{mgmt}/principals/{name}/principal-roles", token=token,
+                    body={"principalRole": {"name": principal_role}})
+
+            # verify end to end: the principal signs in and sees the catalog
+            t = sign_in(client_id, client_secret)
+            request("GET", f"{base}/api/catalog/v1/config?warehouse={catalog}", token=t)
+            print(f"✅ Polaris: principal '{name}' -> {principal_role} -> {catalog}.{role} works")
+    except Refused as e:
+        print(f"❌ Polaris: {e}")
+        sys.exit(1)
+
+  register-bezisync.py: |
+    """Create the `lakehouse` Iceberg destination in BeziSync, if missing.
+
+    Signs in as BeziSync's bootstrap admin (Secret/bezisync-login, copied by
+    CI from BeziSync's own bezisync-secrets) — no API token. BeziSync reaches
+    the catalog as Polaris principal `bezisync` (OAuth2 client credentials,
+    catalog role lakehouse.writer) and writes data files with its own RustFS
+    user (Secret/rustfs-bezisync, copied by CI from ns rustfs).
+
+    Exit 0 on: no login configured (skip), connection exists (skip),
+    BeziSync unreachable or the login refused (warning). Exit 1 on any other
+    refusal (unknown project, rejected config) so the deploy shows it.
+    REGISTER_DRY_RUN=1 runs BeziSync's draft check instead of creating.
+    """
+    import json
+    import os
+    import sys
+    import urllib.error
+    import urllib.request
+    from http.cookies import SimpleCookie
+
+    env = os.environ.get
+    api = env("BEZISYNC_API_URL", "").rstrip("/") + "/api/v1"
+    email = (env("BEZISYNC_LOGIN_EMAIL") or "").strip()
+    password = env("BEZISYNC_LOGIN_PASSWORD") or ""
+    slug = env("BEZISYNC_PROJECT", "playground")
+    name = env("BEZISYNC_LAKEHOUSE_CONNECTION_NAME", "lakehouse")
+    polaris = env("POLARIS_CLUSTER_URL", "").rstrip("/")
+    dry = env("REGISTER_DRY_RUN") == "1"
+
+    if not email or not password:
+        print("⏭  BeziSync: no login (Secret bezisync-login) — skipping registration")
+        sys.exit(0)
+
+    body = {
+        "kind": "sink", "type": "iceberg", "provider": "rest",
+        "config": {
+            "catalog_type": "rest",
+            "uri": f"{polaris}/api/catalog",
+            "warehouse": env("POLARIS_CATALOG", "lakehouse"),
+            "namespace": env("BEZISYNC_ICEBERG_NAMESPACE", "cdc"),
+            "auth": "oauth2",
+            "client_id": env("POLARIS_BEZISYNC_CLIENT_ID"),
+            "scope": "PRINCIPAL_ROLE:ALL",
+            "oauth2_server_uri": f"{polaris}/api/catalog/v1/oauth/tokens",
+            # data files: BeziSync's own RustFS user (Polaris vends nothing)
+            "storage": "s3",
+            "s3_endpoint": env("RUSTFS_CLUSTER_ENDPOINT", "").rstrip("/"),
+            "path_style": True,
+            "region": env("AWS_DEFAULT_REGION", "us-east-1"),
+            "access_key_id": env("BEZISYNC_ACCESS_KEY"),
+        },
+        "secrets": {
+            "client_secret": env("POLARIS_BEZISYNC_CLIENT_SECRET"),
+            "secret_access_key": env("BEZISYNC_SECRET_KEY"),
+        },
+    }
+
+
+    class Refused(Exception):
+        def __init__(self, code, msg):
+            super().__init__(msg)
+            self.code = code
+
+
+    cookies = {}
+
+
+    def call(method, path, payload=None):
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if cookies:
+            # session auth: cookies + double-submit CSRF header on writes. Sent
+            # by hand — BeziSync may mark them Secure, and this is in-cluster http.
+            headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in cookies.items())
+            if "bz_csrf" in cookies:
+                headers["x-csrf-token"] = cookies["bz_csrf"]
+        req = urllib.request.Request(
+            api + path, method=method, headers=headers,
+            data=json.dumps(payload).encode() if payload is not None else None)
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                for raw in resp.headers.get_all("Set-Cookie") or []:
+                    for k, m in SimpleCookie(raw).items():
+                        cookies[k] = m.value
+                data = resp.read()
+                return json.loads(data) if data else None
+        except urllib.error.HTTPError as e:
+            detail = e.read()[:600].decode("utf-8", "replace")
+            raise Refused(e.code, f"{method} {path} -> HTTP {e.code}: {detail}") from None
+
+
+    def show(report, label):
+        report = report or {}
+        print(f"   {label}: {report.get('summary', report)}")
+        for c in report.get("checks") or []:
+            if c.get("status") != "pass":
+                print(f"     - {c.get('status')}: {c.get('title')} — {c.get('message')}"
+                      + (f" | fix: {c['fix']}" if c.get("fix") else ""))
+
+
+    signed_in = False
+    try:
+        try:
+            call("POST", "/auth/login", {"email": email, "password": password})
+            signed_in = True
+        except Refused as e:
+            if e.code in (401, 403):
+                print(f"⚠️  BeziSync: {email} can't sign in ({e}) — skipping. "
+                      "Was the bootstrap admin's password changed?")
+                sys.exit(0)
+            raise
+
+        projects = call("GET", "/projects")
+        if isinstance(projects, dict):
+            projects = projects.get("items", [])
+        project = next((p for p in projects if p.get("slug") == slug), None)
+        if project is None:
+            raise Refused(404, f"project '{slug}' not found (or {email} can't see it)")
+        pid = project["id"]
+
+        if name in {c.get("name") for c in call("GET", f"/projects/{pid}/connections")}:
+            print(f"⏭  BeziSync: connection '{name}' already exists in project '{slug}' — skipping")
+            sys.exit(0)
+        if dry:
+            show(call("POST", f"/projects/{pid}/connections:check", body), "check")
+            print(f"🧪 BeziSync dry run: '{name}' config accepted")
+            sys.exit(0)
+        created = call("POST", f"/projects/{pid}/connections", {
+            **body, "name": name, "managed": True,
+            "description": "Apache Polaris Iceberg REST catalog `lakehouse` (s3://lakehouse "
+                           "on RustFS). Managed by the analytics repo polaris deploy."})
+        print(f"✅ BeziSync: created destination '{name}' ({created.get('id')}) in project '{slug}'")
+        try:
+            show(call("POST", f"/projects/{pid}/connections/{created['id']}/check", {}), "check")
+        except Refused as e:  # informative only: the connection exists now
+            print(f"⚠️  BeziSync: readiness check could not run: {e}")
+    except Refused as e:
+        print(f"❌ BeziSync: {e}")
+        sys.exit(1)
+    except (urllib.error.URLError, OSError) as e:
+        print(f"⚠️  BeziSync unreachable at {api} ({e}) — skipping registration")
+        sys.exit(0)
+    finally:
+        if signed_in:
+            try:
+                call("POST", "/auth/logout", {})
+            except Exception:
+                pass

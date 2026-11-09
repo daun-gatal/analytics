@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - setup-config.yaml
+  - setup-job.yaml
+
+helmCharts:
+  - name: polaris
+    repo: https://downloads.apache.org/polaris/helm-chart
+    # Validated on 2026-11-10 against RustFS 1.0.4 + DuckDB 2.0.0 +
+    # pyiceberg 0.10.0 (scratch namespace): relational-jdbc bootstrap,
+    # catalog/roles/principals setup, writer create/append/evolve, reader
+    # read-only, no credential vending, DuckDB OAuth2 token refresh.
+    version: 1.8.0
+    releaseName: polaris
+    namespace: polaris
+    valuesFile: helm.yaml

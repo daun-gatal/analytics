@@ -27,8 +27,8 @@ data:
   RUSTFS_PORT: '9000'
   RUSTFS_REPLICAS: '4'
   BUCKET_NAME: datalake
-  # Plain bucket (NOT table-enabled) for the Lakekeeper warehouse — its
-  # catalog is Lakekeeper (lakekeeper.yaml), not RustFS's built-in one.
+  # Plain bucket (NOT table-enabled) for the Polaris `lakehouse` catalog —
+  # its catalog is Polaris (polaris module), not RustFS's built-in one.
   LAKEHOUSE_BUCKET: lakehouse
   AWS_DEFAULT_REGION: us-east-1
   bootstrap.sh: |
@@ -210,7 +210,7 @@ data:
         exit 1
     fi
 
-    echo "▶ Ensuring Lakekeeper warehouse bucket '${LAKEHOUSE_BUCKET}' exists (plain S3)"
+    echo "▶ Ensuring Polaris catalog bucket '${LAKEHOUSE_BUCKET}' exists (plain S3)"
     if ! with_retries 6 create_bucket "${LAKEHOUSE_BUCKET}"; then
         echo "❌ Could not ensure bucket '${LAKEHOUSE_BUCKET}'" >&2
         exit 1

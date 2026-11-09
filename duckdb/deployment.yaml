@@ -45,6 +45,20 @@ spec:
                 secretKeyRef:
                   name: duckflight-auth
                   key: password
+            # Polaris principal `duckdb` (read only); optional: without it
+            # duckdb starts with `datalake` only
+            - name: POLARIS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: polaris-duckdb
+                  key: client-id
+                  optional: true
+            - name: POLARIS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: polaris-duckdb
+                  key: client-secret
+                  optional: true
           resources: {}
           volumeMounts:
             - name: runtime
@@ -82,6 +96,18 @@ spec:
                 secretKeyRef:
                   name: rustfs-credentials
                   key: RUSTFS_SECRET_KEY
+            - name: POLARIS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: polaris-duckdb
+                  key: client-id
+                  optional: true
+            - name: POLARIS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: polaris-duckdb
+                  key: client-secret
+                  optional: true
             # Downward API: the container's current memory request, in bytes
             # (divisor 1). The kubelet resolves it at container start, so a
             # VPA-resized pod (see vpa.yaml) always carries the live value;

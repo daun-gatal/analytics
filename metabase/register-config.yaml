@@ -23,8 +23,8 @@ data:
   # uses dbname as the default catalog: it decides which DuckDB catalog's
   # tables a Metabase database lists and resolves schema.table against.
   #   Lake      -> datalake   RustFS built-in catalog (datalake table bucket)
-  #   Lakehouse -> lakehouse  Lakekeeper catalog (lakehouse bucket; attached
-  #                           by duckdb when the warehouse is reachable)
+  #   Lakehouse -> lakehouse  Polaris catalog (lakehouse bucket; attached
+  #                           by duckdb when the catalog is reachable)
   METABASE_DATABASES: Lake=datalake,Lakehouse=lakehouse
   DUCKFLIGHT_HOST: duckdb.analytics.svc.cluster.local
   DUCKFLIGHT_PORT: '5433'

@@ -6,7 +6,6 @@ resources:
   - bootstrap-config.yaml
   - bezisync-config.yaml
   - bootstrap-job.yaml
-  - lakekeeper.yaml
 
 helmCharts:
   - name: rustfs
