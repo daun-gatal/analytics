@@ -12,10 +12,18 @@
 #               kubectl get secret polaris-admin -n polaris -o jsonpath='{.data.client-secret}' | base64 -d
 #
 # The app runs in the browser and calls the Polaris API itself, so the
-# browser must reach it. One origin, no CORS: VITE_POLARIS_API_URL is the
-# console's OWN tailnet URL and its nginx forwards /api/ to Polaris
-# in-cluster. Polaris stays off the tailnet; the forwarded API needs the
-# same OAuth2 tokens as any client.
+# browser must reach it. One origin, no CORS: the app calls the host it was
+# loaded from, and its nginx forwards /api/ to Polaris in-cluster. Polaris
+# stays off the tailnet; the forwarded API needs the same OAuth2 tokens as
+# any client.
+#
+# "The host it was loaded from" is decided per request: the env below hands
+# config.js the placeholder __CONSOLE_ORIGIN__, and nginx serves it as
+# //<the request's Host>. A fixed URL broke the login: the page opened as
+# http://polaris-console.<tailnet>.ts.net called http://polaris-console,
+# another origin, and the browser blocked the request after Polaris left
+# the CORS preflight unanswered ("Network Error"). Any name works now:
+# polaris-console, its MagicDNS name, http or https.
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -28,6 +36,14 @@ data:
   # nginx.default.d/*.conf there), next to its own location / and /health.
   # /api/ is the longer prefix, so it wins over location /.
   api-proxy.conf: |
+    # config.js: __CONSOLE_ORIGIN__ -> //<Host of this request> (protocol-
+    # relative, so http and https both stay same-origin). Server level, so
+    # the image's own `location = /config.js` inherits it; the placeholder
+    # appears nowhere else.
+    sub_filter_types application/javascript text/javascript;
+    sub_filter '__CONSOLE_ORIGIN__' '//$http_host';
+    sub_filter_once off;
+
     location /api/ {
         proxy_pass http://polaris.polaris.svc.cluster.local:8181;
         proxy_http_version 1.1;
@@ -71,11 +87,13 @@ spec:
             - name: http
               containerPort: 8080
           env:
-            # read at start by the image's generate-config.sh -> config.js
+            # read at start by the image's generate-config.sh -> config.js;
+            # nginx turns __CONSOLE_ORIGIN__ into the page's own host
+            # (api-proxy.conf above)
             - name: VITE_POLARIS_API_URL
-              value: http://polaris-console
+              value: __CONSOLE_ORIGIN__
             - name: VITE_OAUTH_TOKEN_URL
-              value: http://polaris-console/api/catalog/v1/oauth/tokens
+              value: __CONSOLE_ORIGIN__/api/catalog/v1/oauth/tokens
             - name: VITE_POLARIS_REALM
               value: POLARIS
             - name: VITE_POLARIS_PRINCIPAL_SCOPE
