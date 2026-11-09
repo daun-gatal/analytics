@@ -38,6 +38,8 @@ data:
   #    without it GET /iceberg/v1/config is denied.
   #  - `lakehouse` bucket (Polaris catalog): plain object access only —
   #    the catalog itself is Polaris, which vends no credentials.
+  #  - `paimon` bucket (Paimon filesystem catalog, Flink CDC): plain object
+  #    access; Paimon's catalog is its own files in the bucket.
   bezisync-policy.json: |
     {
       "Version": "2012-10-17",
@@ -82,7 +84,8 @@ data:
           ],
           "Resource": [
             "arn:aws:s3:::datalake",
-            "arn:aws:s3:::lakehouse"
+            "arn:aws:s3:::lakehouse",
+            "arn:aws:s3:::paimon"
           ]
         },
         {
@@ -97,7 +100,8 @@ data:
           ],
           "Resource": [
             "arn:aws:s3:::datalake/*",
-            "arn:aws:s3:::lakehouse/*"
+            "arn:aws:s3:::lakehouse/*",
+            "arn:aws:s3:::paimon/*"
           ]
         }
       ]

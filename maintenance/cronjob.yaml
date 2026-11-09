@@ -70,6 +70,30 @@ spec:
                     configMapKeyRef:
                       name: maintenance-config
                       key: MAINT_ORPHAN_MIN_AGE
+                - name: MAINT_ROW_RETENTION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: maintenance-config
+                      key: MAINT_ROW_RETENTION
+                - name: MAINT_POLARIS_URL
+                  valueFrom:
+                    configMapKeyRef:
+                      name: maintenance-config
+                      key: MAINT_POLARIS_URL
+                # Polaris principal `maintenance` (lakehouse.writer), copied by
+                # CI from ns polaris; absent -> the lakehouse isn't maintained
+                - name: POLARIS_MAINTENANCE_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: polaris-maintenance
+                      key: client-id
+                      optional: true
+                - name: POLARIS_MAINTENANCE_CLIENT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: polaris-maintenance
+                      key: client-secret
+                      optional: true
                 # Standard AWS SDK env vars: the SDK credential chain always
                 # checks these last-resort providers, guaranteeing SigV4
                 # signing works even if catalog property plumbing misses.

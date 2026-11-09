@@ -5,20 +5,26 @@ metadata:
   namespace: analytics
 data:
   #
-  # Iceberg table maintenance for the datalake on RustFS.
+  # Iceberg table maintenance for the lake on RustFS: the `datalake` catalog
+  # (RustFS built-in) and, when its principal is set, the Polaris
+  # `lakehouse` catalog.
   #
   # maintenance.py runs in the iceberg-maintenance-daily CronJob (Spark
   # local mode) and reads ALL runtime facts from env:
   #   duckdb-settings ConfigMap   -> RUSTFS_PROTOCOL/_HOST/_PORT/_REGION
   #   rustfs-credentials Secret   -> RUSTFS_ACCESS_KEY/_SECRET_KEY
+  #   polaris-maintenance Secret  -> POLARIS_MAINTENANCE_CLIENT_ID/_SECRET
+  #                                  (principal `maintenance`, lakehouse.writer;
+  #                                  optional: absent -> lakehouse skipped)
   #   maintenance-config ConfigMap -> MAINT_* tunables (keys below)
   #
-  # Per table: compact data files -> rewrite manifests -> expire snapshots
-  # -> remove orphan files (with a grace window for in-flight writes).
+  # Per table: row retention (MAINT_ROW_RETENTION) -> compact data files ->
+  # rewrite manifests -> expire snapshots -> remove orphan files (with a
+  # grace window for in-flight writes).
   #
   maintenance.py: |
     #!/usr/bin/env python3
-    """Iceberg table maintenance for the analytics datalake (RustFS)."""
+    """Iceberg table maintenance for the analytics lake (RustFS + Polaris)."""
 
     import os
     import re
@@ -29,6 +35,12 @@ data:
     from pyspark.sql import SparkSession
 
     CATALOG = os.getenv("MAINT_CATALOG_NAME", "datalake")
+    # The Polaris catalog (polaris module), maintained when the `maintenance`
+    # principal's credentials are in env.
+    POLARIS_CATALOG = os.getenv("MAINT_POLARIS_CATALOG", "lakehouse")
+    # BeziSync's Debezium writer adds the time of each change; append-only
+    # change logs are partitioned by its day.
+    CHANGE_TS = "__source_ts_ms"
 
     DURATION_RE = re.compile(r"^\s*(\d+)\s*([dhms])\s*$", re.IGNORECASE)
     DURATION_UNITS = {"d": 86400, "h": 3600, "m": 60, "s": 1}
@@ -67,7 +79,7 @@ data:
         return moment.strftime("%Y-%m-%d %H:%M:%S")
 
 
-    def discover_tables(spark):
+    def discover_tables(spark, catalog):
         """All tables in the catalog, fully qualified as <namespace>.<table>.
 
         SHOW NAMESPACES returns the 'namespace' column as a flat STRING in
@@ -77,24 +89,28 @@ data:
         signature (double-encoded). Normalize both possible shapes.
         """
         tables = []
-        for ns_row in spark.sql(f"SHOW NAMESPACES IN {CATALOG}").collect():
+        for ns_row in spark.sql(f"SHOW NAMESPACES IN {catalog}").collect():
             namespace = ns_row["namespace"]
             if not isinstance(namespace, str):
                 namespace = ".".join(namespace)
-            for t_row in spark.sql(f"SHOW TABLES IN {CATALOG}.{namespace}").collect():
+            for t_row in spark.sql(f"SHOW TABLES IN {catalog}.{namespace}").collect():
                 tables.append(f"{namespace}.{t_row['tableName']}")
         return tables
 
 
-    def compact(spark, table, target_bytes):
+    def compact(spark, catalog, table, target_bytes):
         """Bin-pack small data files up to the target size.
+
+        Procedures get the table fully qualified (<catalog>.<ns>.<table>):
+        given '<ns>.<table>', Spark first tries <ns> as a catalog and logs a
+        CatalogNotFoundException stack trace before falling back.
 
         partial-progress commits every few file groups so a long compaction
         can be retried without redoing everything.
         """
         result = spark.sql(f"""
-            CALL {CATALOG}.system.rewrite_data_files(
-                table => '{table}',
+            CALL {catalog}.system.rewrite_data_files(
+                table => '{catalog}.{table}',
                 options => map(
                     'target-file-size-bytes', '{target_bytes}',
                     'partial-progress.enabled', 'true',
@@ -104,15 +120,15 @@ data:
         print(f"    ↺ compact: {result.asDict()}")
 
 
-    def rewrite_manifests(spark, table):
+    def rewrite_manifests(spark, catalog, table):
         """Consolidate small manifests so scan planning reads fewer files."""
         result = spark.sql(
-            f"CALL {CATALOG}.system.rewrite_manifests(table => '{table}')"
+            f"CALL {catalog}.system.rewrite_manifests(table => '{catalog}.{table}')"
         ).first()
         print(f"    ↺ manifests: {result.asDict()}")
 
 
-    def expire_snapshots(spark, table, max_age_seconds, retain_last):
+    def expire_snapshots(spark, catalog, table, max_age_seconds, retain_last):
         """Drop snapshots older than the retention window.
 
         Expired snapshots are removed from metadata and the procedure
@@ -120,15 +136,15 @@ data:
         """
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
         result = spark.sql(f"""
-            CALL {CATALOG}.system.expire_snapshots(
-                table => '{table}',
+            CALL {catalog}.system.expire_snapshots(
+                table => '{catalog}.{table}',
                 older_than => TIMESTAMP '{ts_literal(cutoff)}',
                 retain_last => {int(retain_last)}
             )""").first()
         print(f"    ↺ expire: {result.asDict()}")
 
 
-    def remove_orphan_files(spark, table, min_age_seconds):
+    def remove_orphan_files(spark, catalog, table, min_age_seconds):
         """Delete files in the table location that no snapshot references.
 
         The min-age grace window protects files from writes that are still
@@ -141,8 +157,8 @@ data:
         """
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=min_age_seconds)
         result = spark.sql(f"""
-            CALL {CATALOG}.system.remove_orphan_files(
-                table => '{table}',
+            CALL {catalog}.system.remove_orphan_files(
+                table => '{catalog}.{table}',
                 older_than => TIMESTAMP '{ts_literal(cutoff)}',
                 prefix_listing => true
             )""")
@@ -150,6 +166,77 @@ data:
         print(f"    ↺ orphans: {len(orphans)} file(s) removed")
         for row in orphans[:10]:
             print(f"      - {row['file_path']}")
+
+
+    def parse_retention(raw):
+        """'datalake.cdc=14d,lakehouse.cdc=14d:deleted' ->
+        {('datalake', 'cdc'): (seconds, tombstones_only)}.
+
+        <catalog>.<namespace>=<age> deletes change-log rows older than the
+        age; ':deleted' limits it to deleted-row markers (upsert tables keep
+        their live rows). Malformed entries fail the run: retention deletes
+        data, it must never guess.
+        """
+        rules = {}
+        for entry in filter(None, (e.strip() for e in (raw or "").split(","))):
+            target, _, rule = entry.partition("=")
+            age, _, mode = rule.partition(":")
+            catalog, _, namespace = target.strip().partition(".")
+            seconds = parse_seconds(age, None)
+            if not catalog or not namespace or seconds is None or mode not in ("", "deleted"):
+                fail(f"MAINT_ROW_RETENTION: can't parse '{entry}' "
+                     "(want <catalog>.<namespace>=<age>[:deleted], e.g. datalake.cdc=14d)")
+            rules[(catalog, namespace.strip())] = (seconds, mode == "deleted")
+        return rules
+
+
+    def retain_rows(spark, catalog, table, max_age_seconds, tombstones_only):
+        """Delete change-log rows whose change is older than the window.
+
+        Only tables BeziSync's Debezium writer made (they carry __source_ts_ms;
+        others are left alone). Append-only change logs are partitioned by its
+        day, so old days go as whole partitions. tombstones_only deletes just
+        the rows an upsert table keeps marked as deleted (__deleted = 'true').
+        """
+        columns = {field.name for field in spark.table(f"{catalog}.{table}").schema.fields}
+        if CHANGE_TS not in columns:
+            print(f"    ↺ retain: no {CHANGE_TS} column, skipped")
+            return
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+        where = f"{CHANGE_TS} < TIMESTAMP '{ts_literal(cutoff)}'"
+        if tombstones_only:
+            if "__deleted" not in columns:
+                print("    ↺ retain: no __deleted column, skipped")
+                return
+            where += " AND __deleted = 'true'"
+        before = spark.sql(f"SELECT count(*) AS n FROM {catalog}.{table} WHERE {where}").first()["n"]
+        if before == 0:
+            print(f"    ↺ retain: nothing older than {ts_literal(cutoff)} UTC")
+            return
+        spark.sql(f"DELETE FROM {catalog}.{table} WHERE {where}")
+        kind = "deleted-row markers" if tombstones_only else "rows"
+        print(f"    ↺ retain: {before} {kind} older than {ts_literal(cutoff)} UTC deleted")
+
+
+    def finish(spark, code):
+        """End the run with `code` once Spark has stopped: halt the JVM.
+
+        After spark.stop() the work is flushed, but on this cluster the JVM's
+        own shutdown never completes: the driver exits, the JVM (PID 1) keeps
+        running, and the Job's pod stays Running, which with
+        concurrencyPolicy Forbid blocks every later run (seen 2026-11-10,
+        also with the script from before; the node's AppArmor profile, which
+        denies signals between processes, is the likely cause). halt() exits
+        at once with the code, skipping only shutdown hooks (temp-dir
+        cleanup of a throwaway pod).
+        """
+        sys.stdout.flush()
+        sys.stderr.flush()
+        try:
+            spark._jvm.java.lang.Runtime.getRuntime().halt(code)
+        except Exception:  # noqa: BLE001 — the gateway drops as the JVM halts
+            pass
+        sys.exit(code)
 
 
     def main():
@@ -176,8 +263,18 @@ data:
         max_age_seconds = parse_seconds(os.getenv("MAINT_SNAPSHOT_MAX_AGE"), 7 * 86400)
         retain_last = int(os.getenv("MAINT_RETAIN_LAST", "10"))
         orphan_min_age = parse_seconds(os.getenv("MAINT_ORPHAN_MIN_AGE"), 3 * 86400)
+        retention = parse_retention(os.getenv("MAINT_ROW_RETENTION", ""))
 
-        spark = (
+        polaris_url = (os.getenv("MAINT_POLARIS_URL") or "").rstrip("/")
+        polaris_id = os.getenv("POLARIS_MAINTENANCE_CLIENT_ID")
+        polaris_secret = os.getenv("POLARIS_MAINTENANCE_CLIENT_SECRET")
+        catalogs = [CATALOG]
+        if polaris_url and polaris_id and polaris_secret:
+            catalogs.append(POLARIS_CATALOG)
+        else:
+            print(f"⏭  {POLARIS_CATALOG}: no Polaris URL or principal (Secret polaris-maintenance) — not maintained")
+
+        builder = (
             SparkSession.builder.appName("iceberg-maintenance")
             .master(os.getenv("MAINT_SPARK_MASTER", "local[2]"))
             # CALL procedures + Iceberg SQL
@@ -185,6 +282,11 @@ data:
                 "spark.sql.extensions",
                 "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions",
             )
+            # TIMESTAMP literals (retention and expiry cutoffs) are UTC
+            .config("spark.sql.session.timeZone", "UTC")
+            # No Spark UI: nobody looks at it in a nightly batch (and stopping
+            # its Jetty server timed out at shutdown; see finish()).
+            .config("spark.ui.enabled", "false")
             # REST catalog over RustFS, SigV4-signed like the DuckDB ATTACH
             .config(f"spark.sql.catalog.{CATALOG}", "org.apache.iceberg.spark.SparkCatalog")
             .config(f"spark.sql.catalog.{CATALOG}.type", "rest")
@@ -248,16 +350,37 @@ data:
             )
             .config(f"spark.sql.catalog.{CATALOG}.client.region", region)
             .config("spark.sql.defaultCatalog", CATALOG)
-            .getOrCreate()
         )
+        if POLARIS_CATALOG in catalogs:
+            # Polaris REST catalog: OAuth2 client credentials (Iceberg renews
+            # the token itself). Polaris vends no credentials (no STS on
+            # RustFS), so S3FileIO gets the RustFS keys like datalake's.
+            p = f"spark.sql.catalog.{POLARIS_CATALOG}"
+            for key, value in {
+                "": "org.apache.iceberg.spark.SparkCatalog",
+                ".type": "rest",
+                ".uri": f"{polaris_url}/api/catalog",
+                ".warehouse": POLARIS_CATALOG,
+                ".credential": f"{polaris_id}:{polaris_secret}",
+                ".scope": "PRINCIPAL_ROLE:ALL",
+                ".oauth2-server-uri": f"{polaris_url}/api/catalog/v1/oauth/tokens",
+                ".io-impl": "org.apache.iceberg.aws.s3.S3FileIO",
+                ".s3.endpoint": s3_endpoint,
+                ".s3.path-style-access": "true",
+                ".s3.access-key-id": os.getenv("RUSTFS_ACCESS_KEY"),
+                ".s3.secret-access-key": os.getenv("RUSTFS_SECRET_KEY"),
+                ".client.region": region,
+            }.items():
+                builder = builder.config(p + key, value)
+        spark = builder.getOrCreate()
 
         # Diagnostics: show what catalog conf actually reached Spark so
         # credential/signing plumbing issues are visible in job logs.
         # spark.conf.getAll is a dict property in PySpark 4.x.
         for conf_key in sorted(dict(spark.conf.getAll)):
-            if CATALOG in conf_key:
+            if any(f"catalog.{name}" in conf_key for name in catalogs):
                 conf_value = spark.conf.get(conf_key)
-                if "access-key" in conf_key or "secret" in conf_key:
+                if "access-key" in conf_key or "secret" in conf_key or "credential" in conf_key:
                     conf_value = f"<len {len(conf_value)}>"
                 print(f"DEBUG spark conf {conf_key}={conf_value}")
         for env_key in ("RUSTFS_ACCESS_KEY", "RUSTFS_SECRET_KEY", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"):
@@ -267,16 +390,19 @@ data:
         # Discovery failure must NOT become a bare crash: the pyspark
         # traceback is the only place that names the REST endpoint the
         # catalog client 501'd on (ResourcePaths / ErrorHandlers frames).
-        try:
-            tables = discover_tables(spark)
-        except Exception:  # noqa: BLE001
-            print("❌ maintenance: table discovery failed", file=sys.stderr)
-            traceback.print_exc()
-            spark.stop()
-            sys.exit(2)
-        print(f"▶ catalog={CATALOG} tables={len(tables)}")
-        for table in tables:
-            print(f"→ {table}")
+        targets = []  # (catalog, <namespace>.<table>)
+        for catalog in catalogs:
+            try:
+                found = discover_tables(spark, catalog)
+            except Exception:  # noqa: BLE001
+                print(f"❌ maintenance: table discovery failed in {catalog}", file=sys.stderr)
+                traceback.print_exc()
+                spark.stop()
+                finish(spark, 2)
+            print(f"▶ catalog={catalog} tables={len(found)}")
+            for table in found:
+                print(f"→ {catalog}.{table}")
+            targets += [(catalog, table) for table in found]
 
         failures = []
         skipped = []
@@ -296,39 +422,46 @@ data:
         MANIFEST_REWRITE_REJECTED = "row-level snapshot operation requires deleted data files"
 
         def run(step_name, step):
+            label = f"{catalog}.{table}"
             try:
                 step()
             except Exception as error:  # noqa: BLE001 — one bad table must not block the rest
                 text = str(error)
                 if CATALOG_BROKEN in text:
-                    skipped.append(f"{table}: catalog entry broken ({CATALOG_BROKEN}) — needs drop + recreate")
+                    skipped.append(f"{label}: catalog entry broken ({CATALOG_BROKEN}) — needs drop + recreate")
                     print(f"    ⚠ {step_name}: table catalog state is broken, skipping table", file=sys.stderr)
                     return "table"
                 if MANIFEST_REWRITE_REJECTED in text:
-                    skipped.append(f"{table}/{step_name}: server rejects manifest-rewrite commits ({MANIFEST_REWRITE_REJECTED})")
+                    skipped.append(f"{label}/{step_name}: server rejects manifest-rewrite commits ({MANIFEST_REWRITE_REJECTED})")
                     print(f"    ⚠ {step_name}: known server limitation, skipping step", file=sys.stderr)
                     return "step"
-                failures.append(f"{table}/{step_name}: {error}")
+                failures.append(f"{label}/{step_name}: {error}")
                 print(f"    ✗ {step_name}: {error}", file=sys.stderr)
                 traceback.print_exc()
             return None
 
-        for table in tables:
-            outcome = run("compact", lambda: compact(spark, table, target_bytes))
+        for catalog, table in targets:
+            print(f"→ {catalog}.{table}")
+            rule = retention.get((catalog, table.rsplit(".", 1)[0]))
+            if rule:
+                outcome = run("retain", lambda: retain_rows(spark, catalog, table, *rule))
+                if outcome == "table":
+                    continue
+            outcome = run("compact", lambda: compact(spark, catalog, table, target_bytes))
             if outcome == "table":
                 continue
-            outcome = run("manifests", lambda: rewrite_manifests(spark, table))
+            outcome = run("manifests", lambda: rewrite_manifests(spark, catalog, table))
             if outcome == "table":
                 continue
             outcome = run(
                 "expire",
-                lambda: expire_snapshots(spark, table, max_age_seconds, retain_last),
+                lambda: expire_snapshots(spark, catalog, table, max_age_seconds, retain_last),
             )
             if outcome == "table":
                 continue
             run(
                 "orphans",
-                lambda: remove_orphan_files(spark, table, orphan_min_age),
+                lambda: remove_orphan_files(spark, catalog, table, orphan_min_age),
             )
 
         spark.stop()
@@ -342,8 +475,9 @@ data:
             print(f"❌ maintenance: {len(failures)} step(s) failed:", file=sys.stderr)
             for failure in failures:
                 print(f"   - {failure}", file=sys.stderr)
-            sys.exit(1)
+            finish(spark, 1)
         print("✅ maintenance: all tables up to date")
+        finish(spark, 0)
 
 
     if __name__ == "__main__":
@@ -356,5 +490,12 @@ data:
   MAINT_TARGET_FILE_SIZE: "512MB"   # bin-pack data files up to this size
   MAINT_SNAPSHOT_MAX_AGE: "7d"      # expire snapshots older than this
   MAINT_RETAIN_LAST: "10"           # always keep at least N snapshots
+  MAINT_ROW_RETENTION: "datalake.cdc=14d,lakehouse.cdc=14d:deleted"
+                                    # <catalog>.<namespace>=<age>[:deleted]: delete
+                                    # change-log rows (BeziSync's __source_ts_ms)
+                                    # older than <age>; :deleted only the rows an
+                                    # upsert table keeps marked deleted. The cdc
+                                    # namespaces are the BeziSync lab's writes.
+  MAINT_POLARIS_URL: http://polaris.polaris.svc.cluster.local:8181
   MAINT_ORPHAN_MIN_AGE: "72h"       # orphan grace window (files newer than
                                     # this are never deleted, even if unreferenced)

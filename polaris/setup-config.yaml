@@ -16,6 +16,8 @@ data:
   #   bezisync  lakehouse_writer -> lakehouse.writer  create + commit, no drop
   #             (the BeziSync `analytics-lakehouse` destination is registered by
   #             bezisync-lab, which reads Secret/polaris-bezisync)
+  #   maintenance lakehouse_writer -> lakehouse.writer the nightly maintenance
+  #             (Secret/polaris-maintenance, copied to ns analytics)
   #   admin     service_admin (built-in)              full admin: the console
   #                                                   login (Secret/polaris-admin)
   #
@@ -84,6 +86,9 @@ data:
     PRINCIPALS = [
         ("duckdb", "reader", "POLARIS_DUCKDB"),
         ("bezisync", "writer", "POLARIS_BEZISYNC"),
+        # the nightly Iceberg maintenance (compaction, snapshot expiry, row
+        # retention): a writer, no drops
+        ("maintenance", "writer", "POLARIS_MAINTENANCE"),
         ("admin", None, "POLARIS_ADMIN"),
     ]
 
