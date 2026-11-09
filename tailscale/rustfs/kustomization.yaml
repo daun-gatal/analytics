@@ -1,0 +1,21 @@
+# Opt-in: expose Service/rustfs-svc (S3 + Iceberg REST :9000, console :80)
+# on the tailnet as `rustfs` — for the console or S3 tools from a laptop.
+# Enabled by the workflow input tailscale_expose=rustfs|all; an apply
+# without it removes the annotations and the operator tears the proxy down.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - target:
+      kind: Service
+      name: rustfs-svc
+      namespace: rustfs
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: rustfs-svc
+        namespace: rustfs
+        annotations:
+          tailscale.com/expose: 'true'
+          tailscale.com/hostname: rustfs

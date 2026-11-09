@@ -1,0 +1,96 @@
+# Metabase OSS — connects to DuckDB through DuckFlight's Postgres wire.
+#
+# Add the database once in the UI (Admin → Databases → PostgreSQL):
+#   host duckdb.analytics.svc.cluster.local · port 5433
+#   database name  datalake   ← REQUIRED: DuckFlight uses dbname as the
+#                               default catalog; any other name hides the
+#                               lake tables and breaks schema.table SQL
+#   user/password  the duckflight-auth Secret (GitHub DUCKFLIGHT_USER/_PASSWORD)
+#   SSL on, mode   require    ← the cert is self-signed and regenerated per
+#                               duckdb pod boot, so verify-* can never pass
+# and turn off "rerun queries for simple explorations" + scheduled
+# scans/fingerprinting there: each one is a full scan of the lake.
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: metabase
+  namespace: analytics
+  labels:
+    app.kubernetes.io/name: metabase
+    app.kubernetes.io/component: metabase
+spec:
+  # One replica: Metabase runs its sync/scheduler on every instance.
+  replicas: 1
+  strategy:
+    type: Recreate # never two versions migrating the app DB at once
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: metabase
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: metabase
+        app.kubernetes.io/component: metabase
+    spec:
+      containers:
+        - name: metabase
+          image: metabase/metabase:v0.65.3.6
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: MB_DB_TYPE
+              value: postgres
+            - name: MB_DB_HOST
+              value: metabase-db.analytics.svc.cluster.local
+            - name: MB_DB_PORT
+              value: '5432'
+            - name: MB_DB_DBNAME
+              value: metabase
+            - name: MB_DB_USER
+              value: metabase
+            - name: MB_DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-secrets
+                  key: db-password
+            # encrypts stored connection details (the DuckFlight password)
+            - name: MB_ENCRYPTION_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-secrets
+                  key: encryption-key
+            - name: JAVA_TIMEZONE
+              value: UTC
+            # heap tracks the container limit
+            - name: JAVA_OPTS
+              value: -XX:MaxRAMPercentage=75
+            # version is pinned here, not by in-app upgrade prompts
+            - name: MB_CHECK_FOR_UPDATES
+              value: 'false'
+            - name: MB_ANON_TRACKING_ENABLED
+              value: 'false'
+          # first boot runs the app-DB migrations: give it up to 10 min
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1536Mi
+            limits:
+              memory: 2Gi

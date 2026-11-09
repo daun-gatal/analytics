@@ -1,0 +1,21 @@
+# Opt-in: expose Service/duckdb (5433 Postgres wire, 31337 Flight SQL) on
+# the tailnet as `duckdb` — for DBeaver/psql from outside the cluster.
+# Enabled by the workflow input tailscale_expose=duckdb|all; an apply
+# without it removes the annotations and the operator tears the proxy down.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+
+patches:
+  - target:
+      kind: Service
+      name: duckdb
+      namespace: analytics
+    patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: duckdb
+        namespace: analytics
+        annotations:
+          tailscale.com/expose: 'true'
+          tailscale.com/hostname: duckdb

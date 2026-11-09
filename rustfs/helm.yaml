@@ -25,9 +25,9 @@ ingress:
 
 service:
   type: ClusterIP
-  annotations:
-    tailscale.com/expose: "true"   # Tailscale operator → per-port HTTPS hostnames
-    tailscale.com/hostname: "rustfs"
+  # Not on the tailnet by default — every consumer is in-cluster. Opt in
+  # per run with the workflow input tailscale_expose=rustfs|all
+  # (component: tailscale/rustfs patches Service/rustfs-svc).
   console:
     port: 80
 

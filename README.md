@@ -2,11 +2,13 @@
 
 Run a **modern data lake** on your own Kubernetes cluster, then query it like it's just... Postgres.
 
-* **[RustFS](https://rustfs.com) v1.0.0** — the freshly released, S3-compatible object store written in Rust. Deployed distributed (4 pods × 1 drive, Longhorn PVCs) and hosting an **Apache Iceberg REST catalog** over your data.
-* **DuckDB 1.5.5** — in-process analytical engine, `:memory:`, with the `iceberg` and `httpfs` extensions. It `ATTACH`es the RustFS catalog and reads Parquet data straight from object storage. No state to babysit.
+* **[RustFS](https://rustfs.com) v1.0.4** — the freshly released, S3-compatible object store written in Rust. Deployed distributed (4 pods × 1 drive, Longhorn PVCs) and hosting an **Apache Iceberg REST catalog** over your data.
+* **DuckDB 2.0.0** — in-process analytical engine, `:memory:`, with the `iceberg` and `httpfs` extensions. It `ATTACH`es the RustFS catalog and reads Parquet data straight from object storage. No state to babysit.
 * **DuckFlight** — a DuckDB community extension that exposes the **PostgreSQL wire protocol** (`:5433`) and **Arrow Flight SQL** (`:31337`), with TLS and PBKDF2-hashed credentials generated per boot.
 
 The result: any Postgres client you already have — `psql`, DBeaver, Metabase, your app's ORM — connects and runs analytical SQL over the lake. No warehouse to size, no cluster to manage, no catalog to install separately.
+
+* **Metabase v0.65.3.6** — shipped in-repo as the BI layer, talking to DuckFlight over the Postgres wire like any other client (see [Metabase](#metabase)).
 
 ## The pitch in one query
 
@@ -38,8 +40,8 @@ flowchart LR
     FS["Arrow Flight SQL clients<br/>Spark · pandas · JDBC"]
 
     subgraph ANALYTICS["namespace: analytics"]
-        SVC["Service/duckdb<br/>5433 postgres · 31337 flight<br/>Tailscale expose: duckdb"]
-        DUCK["Deployment/duckdb<br/>DuckDB 1.5.5 :memory:<br/>iceberg · httpfs · duckflight"]
+        SVC["Service/duckdb<br/>5433 postgres · 31337 flight<br/>Tailscale: opt-in"]
+        DUCK["Deployment/duckdb<br/>DuckDB 2.0.0 :memory:<br/>iceberg · httpfs · duckflight"]
         HPA["HPA/duckdb<br/>1-3 replicas · cpu 65%"]
         VPA["VPA/duckdb<br/>memory only · 2-6Gi"]
         SETTINGS["ConfigMap/duckdb-settings<br/>runtime facts: endpoint, region, ports"]
@@ -49,11 +51,13 @@ flowchart LR
     end
 
     subgraph RUSTFS["namespace: rustfs"]
-        RSVC["Service/rustfs-svc<br/>9000 S3 + Iceberg REST<br/>Tailscale expose: rustfs"]
+        RSVC["Service/rustfs-svc<br/>9000 S3 + Iceberg REST<br/>Tailscale: opt-in"]
         STS["StatefulSet/rustfs<br/>4 pods · 10Gi longhorn each"]
     end
 
     PG --> SVC
+    MB["Deployment/metabase<br/>v0.65.3.6 · Tailscale: metabase"] -- "pg wire, dbname=datalake" --> SVC
+    MB --> MBDB[("StatefulSet/metabase-db<br/>Postgres 18 · longhorn 5Gi")]
     FS --> SVC
     SVC --> DUCK
     HPA -. scales .- DUCK
@@ -71,7 +75,7 @@ flowchart LR
 ```
 
 * DuckDB pods are **disposable** — the only state is in the lake. The HPA scales `duckdb` 1→3 on CPU pressure; the VPA owns memory sizing (2–6Gi, `InPlaceOrRecreate` — request raises resize the pod in place, no restart), and each pod re-derives its `memory_limit` from the request at start.
-* Both services are exposed over **Tailscale** (`tailscale.com/expose`), so clients reach them from anywhere in the tailnet.
+* Only **Metabase** is on the **Tailscale** tailnet by default (`http://metabase`). It reaches DuckDB in-cluster, as do all other consumers. `duckdb` and `rustfs` join the tailnet only when a deploy asks for it — see [Tailscale exposure](#tailscale-exposure).
 
 ### What happens at pod start
 
@@ -112,16 +116,17 @@ flowchart TD
 
 | Aspect | Value |
 |---|---|
-| Namespaces | `analytics` (duckdb) · `rustfs` (object store) |
+| Namespaces | `analytics` (duckdb, metabase) · `rustfs` (object store) |
 | DuckDB endpoints | `5433` Postgres wire · `31337` Arrow Flight SQL |
 | RustFS endpoint | `rustfs-svc.rustfs.svc.cluster.local:9000` (S3 + Iceberg REST `/iceberg`) |
 | Default bucket | `datalake` — created and enabled as an S3 table bucket by `Job/rustfs-bootstrap` on every rustfs/all apply |
-| Object storage | RustFS chart v1.0.0, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
+| Object storage | RustFS chart v1.0.4, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
 | Scaling | duckdb: HPA 1–3 replicas (CPU 65%) + VPA memory 2–6Gi (InPlaceOrRecreate) — `memory_limit` = 85% × request via the Downward API |
-| Exposure | Tailscale: `duckdb` and `rustfs` hostnames |
+| Exposure | Tailscale: `metabase` always; `duckdb` / `rustfs` opt-in per deploy (`tailscale_expose`) |
 | Auth | DuckFlight PBKDF2-hashed creds + TLS, per-boot cert with `<service>.<ns>` SANs |
 | Credentials | Single GitHub Secret pair, stamped by CI into both namespaces |
 | Iceberg maintenance | CronJob `iceberg-maintenance-daily` in `analytics` at 02:00 (compact → manifests → expire snapshots → orphan cleanup) · Spark local mode · image `ghcr.io/daun-gatal/analytics/iceberg-maintenance` (public, built by CI) |
+| BI | `Deployment/metabase` (v0.65.3.6, 1 replica) + `StatefulSet/metabase-db` (Postgres 18.6, Longhorn 5Gi) — the only stateful piece in `analytics`; `Secret/metabase-secrets` generated once by CI |
 | Data generator | `Deployment/generator-stream` (always-on: Wikimedia EventStreams SSE + Bluesky Jetstream WS → `datalake.events.*`, 60s/100-row buffered appends) + `CronJob/generator-batch` hourly at :15 (GH Archive + Wikimedia pageview dumps → `datalake.web.*`, overwrite-by-hour) · image `ghcr.io/daun-gatal/analytics/generator` (public, built by CI) |
 
 ## Structure
@@ -129,19 +134,19 @@ flowchart TD
 ```
 analytics/                     # repo root for manifests (this dir)
 ├── namespace.yaml             # Namespace/analytics
-├── kustomization.yaml         # root — order: namespace -> duckdb -> rustfs -> maintenance
+├── kustomization.yaml         # root — order: namespace -> duckdb -> rustfs -> maintenance -> generator -> metabase
 ├── duckdb/                    # DuckDB + DuckFlight (Postgres/FlightSQL endpoints)
 │   ├── kustomization.yaml
 │   ├── config-settings.yaml         # duckdb-settings ConfigMap (runtime facts)
 │   ├── configmap.yaml               # duckdb-config (generate-config.sh + init.sql, getenv-driven)
-│   ├── deployment.yaml              # duckdb/duckdb:1.5.5, :memory:, init renders config
-│   ├── service.yaml                 # 5433 postgres, 31337 flight, tailscale expose
+│   ├── deployment.yaml              # duckdb/duckdb:2.0.0, :memory:, init renders config
+│   ├── service.yaml                 # 5433 postgres, 31337 flight (tailnet: opt-in)
 │   ├── hpa.yaml                     # 1..3 replicas, cpu 65% (memory → VPA)
 │   └── vpa.yaml                     # VPA: memory 2–6Gi, InPlaceOrRecreate — request feeds the Downward API env
-├── rustfs/                    # RustFS object store (chart v1.0.0, StatefulSet x4)
+├── rustfs/                    # RustFS object store (chart v1.0.4, StatefulSet x4)
 │   ├── kustomization.yaml           # Namespace/rustfs + helmCharts (repo charts.rustfs.com)
 │   ├── namespace.yaml               # Namespace/rustfs
-│   ├── helm.yaml                    # chart values (distributed 4x1, longhorn, tailscale)
+│   ├── helm.yaml                    # chart values (distributed 4x1, longhorn)
 │   ├── bootstrap-config.yaml        # rustfs-bootstrap-config: bootstrap.sh + RUSTFS_ENDPOINT/BUCKET_NAME
 │   └── bootstrap-job.yaml           # Job/rustfs-bootstrap — default bucket + S3 Tables enable, per apply
 ├── maintenance/               # Iceberg table maintenance (Spark local-mode CronJobs)
@@ -160,7 +165,16 @@ analytics/                     # repo root for manifests (this dir)
 │   │   └── deployment.yaml          # Deployment/generator-stream (1 replica)
 │   └── batch/
 │       └── cronjob.yaml             # CronJob/generator-batch (hourly :15)
+├── metabase/                  # Metabase BI over DuckFlight
+│   ├── kustomization.yaml
+│   ├── postgres.yaml                # metabase-db: headless Service + Postgres 18 StatefulSet (app DB)
+│   ├── deployment.yaml              # metabase/metabase:v0.65.3.6, 1 replica, Recreate
+│   └── service.yaml                 # :80 -> 3000, tailscale expose `metabase`
+├── tailscale/                 # opt-in tailnet exposure (kustomize Components)
+│   ├── duckdb/kustomization.yaml    # annotates Service/duckdb → hostname `duckdb`
+│   └── rustfs/kustomization.yaml    # annotates Service/rustfs-svc → hostname `rustfs`
 ├── scripts/
+│   ├── build-manifests.sh     # render a module (+ tailscale components) — used by CI
 │   └── sync-duckdb-rustfs.sh  # derive duckdb connection facts from deployed rustfs
 └── .github/workflows/
     └── deploy.yaml            # module/action dispatcher (dispatch + call)
@@ -273,6 +287,26 @@ kubectl create job --from=cronjob/generator-batch generator-manual -n analytics
 kubectl logs -f job/generator-manual -n analytics
 ```
 
+## Metabase
+
+`metabase/` runs Metabase OSS as the BI layer. It is just another Postgres client of DuckFlight — no DuckDB driver plugin, no direct lake access, no RustFS credentials.
+
+* **App DB:** a single-replica Postgres 18 StatefulSet (`metabase-db`, Longhorn 5Gi) stores users, questions, dashboards and the encrypted DuckFlight login. `Secret/metabase-secrets` (`db-password`, `encryption-key`) is generated by CI on the **first** deploy and never re-applied — rotating `encryption-key` would make stored connections undecryptable.
+* **Access:** `http://metabase` on the tailnet. The first visit runs Metabase's setup wizard (admin account).
+
+Add the lake once (Admin → Databases → Add → **PostgreSQL**):
+
+| Field | Value |
+|---|---|
+| Host / Port | `duckdb.analytics.svc.cluster.local` / `5433` |
+| Database name | **`datalake`** — DuckFlight uses `dbname` as the default catalog. With any other name the lake tables are not listed and `schema.table` SQL fails (`events.x` is rewritten to `<dbname>.events.x`) |
+| Username / Password | the `DUCKFLIGHT_USER` / `DUCKFLIGHT_PASSWORD` GitHub Secrets |
+| Use SSL / SSL mode | on / **`require`** — the cert is self-signed and regenerated on every duckdb pod start, so `verify-ca`/`verify-full` can never pass |
+
+Then, in the same form's advanced options, turn off **"Rerun queries for simple explorations"** and set scanning for filter values to **"Never"** / only when adding a new filter widget: every scan and fingerprint is a full read of the Iceberg tables.
+
+Validated locally on 2026-11-09 (DuckDB 2.0.0 + RustFS 1.0.4 + Metabase v0.65.3.6): sync lists `events.*` with typed columns, and both native SQL and GUI-built questions (e.g. count by `day(ts)` × column) run through DuckFlight. A table with no snapshot can show a placeholder `__` column on the very first sync — a later sync (Admin → Databases → Sync now) picks up the real schema.
+
 ## Prerequisites
 
 * `kubectl` + `kustomize` (kubectl 1.14+ embeds it) and **helm 3** (helmCharts inflation requires the helm binary)
@@ -299,6 +333,18 @@ kubectl apply -k duckdb/
 bash scripts/sync-duckdb-rustfs.sh
 ```
 
+### Tailscale exposure
+
+Metabase is always on the tailnet. To also put `duckdb` (DBeaver/psql from your laptop) or `rustfs` (console, S3 tools) there, render with `scripts/build-manifests.sh`, which layers the matching `tailscale/<name>` component on top:
+
+```bash
+scripts/build-manifests.sh . none   > built.yaml   # metabase only (default)
+scripts/build-manifests.sh . duckdb > built.yaml   # + duckdb
+scripts/build-manifests.sh . all    > built.yaml   # + duckdb + rustfs
+```
+
+In CI this is the `tailscale_expose` input. **Exposure is per apply:** an apply rendered without a component removes that Service's annotations, and the Tailscale operator tears the proxy down. So a later routine `apply` with the default `none` takes `duckdb` back off the tailnet. Re-pass the option on every apply where you want it kept.
+
 Per-component (duckdb alone needs no helm):
 
 ```bash
@@ -309,16 +355,17 @@ kubectl apply -k duckdb/
 
 Manual dispatch (also `workflow_call`). Inputs:
 
-* `module`: `all` (root kustomization), `duckdb`, `rustfs`, `maintenance`, `generator`
+* `module`: `all` (root kustomization), `duckdb`, `rustfs`, `maintenance`, `generator`, `metabase`
 * `action`: `apply` | `diff` | `delete` | `dry-run` | `restart` | `logs` | `probe` | `sigprobe` | `trigger` | `repair`
 * `force_rebuild` (boolean, default `false`): build both images even when change detection finds them already up to date
+* `tailscale_expose` (`none` | `duckdb` | `rustfs` | `all`, default `none`): also put those Services on the tailnet for this apply/diff/dry-run (metabase always is). Only Services inside the chosen `module` are affected; see [Tailscale exposure](#tailscale-exposure)
 
-Pipeline: **build-image** (change-gated per image — a build only runs when GHCR's `:<sha>`-tagged history shows the image's inputs changed since its last push; `maintenance/image/**` gates the Spark image, `generator/**` minus `*.yaml` the generator. Re-running the same commit, or dispatching after a manifest/ConfigMap-only change, restores the cached layers instead of pushing identical images; see `force_rebuild`) → **execute**: validate module → checkout → kubectl v1.30 → helm v3.14 → Tailscale login (`tag:git`) → write kubeconfig from the `KUBECONFIG` secret → ensure namespaces → create secrets from GitHub Secrets → `kubectl kustomize --enable-helm` build → execute action (rendered manifests are applied with `apply -f`, since `kubectl apply -k` cannot inflate helm charts).
+Pipeline: **build-image** (change-gated per image — a build only runs when GHCR's `:<sha>`-tagged history shows the image's inputs changed since its last push; `maintenance/image/**` gates the Spark image, `generator/**` minus `*.yaml` the generator. Re-running the same commit, or dispatching after a manifest/ConfigMap-only change, restores the cached layers instead of pushing identical images; see `force_rebuild`) → **execute**: validate module → checkout → kubectl v1.30 → helm v3.14 → Tailscale login (`tag:git`) → write kubeconfig from the `KUBECONFIG` secret → ensure namespaces → create secrets from GitHub Secrets → `scripts/build-manifests.sh` build (`kubectl kustomize --enable-helm` + `tailscale_expose` components) → execute action (rendered manifests are applied with `apply -f`, since `kubectl apply -k` cannot inflate helm charts).
 
 Behavior notes:
 
 * `apply` always runs the sync script afterwards (idempotent — no restart when already aligned), so rustfs changes propagate to duckdb automatically
-* `restart` maps: `duckdb` → `deployment/duckdb -n analytics`; `rustfs` → `statefulset/rustfs -n rustfs`; `maintenance` → `iceberg-maintenance-daily`; `all` → everything (targets are passed to kubectl as single `"kind/name -n ns"` units)
+* `restart` maps: `duckdb` → `deployment/duckdb -n analytics`; `rustfs` → `statefulset/rustfs -n rustfs`; `maintenance` → `iceberg-maintenance-daily`; `metabase` → `deployment/metabase -n analytics`; `all` → everything (targets are passed to kubectl as single `"kind/name -n ns"` units)
 * `delete` deletes the module's rendered kustomization (`--ignore-not-found`)
 * `logs` dumps recent pod logs for the module plus the two newest CronJob jobs in `analytics` — read-only cluster diagnosis from CI
 * `probe` (generator) runs a read-only diagnostic inside the generator-stream pod: credential shape (never values), resolved package inventory, a real `load_iceberg_catalog()` attempt with full traceback, and a signed-request matrix against the live catalog endpoint
@@ -335,6 +382,7 @@ Required GitHub Secrets:
 ## Secrets
 
 * No Secret manifests are stored in the repo — CI creates/updates them from GitHub Secrets on every run (`kubectl create secret ... --dry-run=client -o yaml | kubectl apply -f -`)
+* Exception: `metabase-secrets` is generated in-cluster (`openssl rand`) only when absent and never overwritten — no GitHub Secret, and deliberately not rotatable by re-running CI
 * Rotate: update the GitHub Secret, run this workflow with `action=apply`, then `action=restart` with `module=duckdb` (rustfs picks up creds on its own restart)
 
 ## Maintenance Notes
