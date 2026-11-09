@@ -1,0 +1,174 @@
+# Polaris Console image — run by hand, independently of "Deploy Analytics".
+#
+# Upstream (apache/polaris-tools, console/) publishes no image. This builds
+# it from `ref` with upstream's own Dockerfile and pushes
+# ghcr.io/<repo>/polaris-console:latest. The package keeps exactly ONE
+# image: every run deletes every other version, so :latest is all there is
+# (polaris/kustomization.yaml deploys :latest). The commit an image was
+# built from is its org.opencontainers.image.revision label and is in the
+# run summary.
+#
+# Then (rollout, default on) it restarts deployment/polaris-console so the
+# cluster pulls the new :latest (imagePullPolicy Always); skipped when the
+# polaris module isn't deployed yet.
+#
+# One-time: the first push creates the package PRIVATE — flip it to public
+# (GitHub → Packages → polaris-console → visibility), like the other images.
+name: Polaris Console image
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'apache/polaris-tools branch, tag or commit to build'
+        required: true
+        type: string
+        default: main
+      rollout:
+        description: 'Restart the console in the cluster afterwards'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: polaris-console
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  build:
+    name: Build, push :latest, delete older images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - name: Resolve ref to a commit
+        id: src
+        env:
+          REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if printf '%s' "$REF" | grep -Eq '^[0-9a-f]{40}$'; then
+            SHA="$REF"
+          else
+            # branch or tag (an annotated tag's ^{} line is the commit)
+            SHA="$(git ls-remote https://github.com/apache/polaris-tools.git "$REF" "$REF^{}" | tail -1 | cut -f1)"
+          fi
+          if ! printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "❌ '${REF}' is no branch, tag or full commit sha of apache/polaris-tools"
+            exit 1
+          fi
+          echo "▸ apache/polaris-tools ${REF} = ${SHA}"
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/polaris-console" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # No provenance/SBOM attachments: :latest is ONE manifest, so deleting
+      # every other version below can't take part of it.
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: https://github.com/apache/polaris-tools.git#${{ steps.src.outputs.sha }}:console
+          file: docker/Dockerfile
+          push: true
+          provenance: false
+          sbom: false
+          tags: ${{ steps.src.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/apache/polaris-tools
+            org.opencontainers.image.revision=${{ steps.src.outputs.sha }}
+          cache-from: type=gha,scope=polaris-console
+          cache-to: type=gha,mode=max,scope=polaris-console
+
+      # One image in the package: every version but the one just pushed goes
+      # (older :latest builds are untagged now).
+      - name: Delete the older images
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY_OWNER}"
+          PKG="$(printf '%s' "${GITHUB_REPOSITORY#*/}/polaris-console" | tr 'A-Z' 'a-z' | sed 's#/#%2F#g')"
+          if [ "$(gh api "users/${OWNER}" --jq .type)" = Organization ]; then
+            BASE="orgs/${OWNER}/packages/container/${PKG}/versions"
+          else
+            BASE="users/${OWNER}/packages/container/${PKG}/versions"
+          fi
+          OLD="$(gh api --paginate "${BASE}" --jq ".[] | select(.name != \"${DIGEST}\") | .id")"
+          if [ -z "$OLD" ]; then
+            echo "▸ no older images"
+          fi
+          for ID in $OLD; do
+            gh api -X DELETE "${BASE}/${ID}" >/dev/null
+            echo "▸ deleted version ${ID}"
+          done
+          LEFT="$(gh api --paginate "${BASE}" --jq '.[] | .name + " " + (.metadata.container.tags | join(","))')"
+          echo "▸ package now holds:"; echo "$LEFT" | sed 's/^/    /'
+          [ "$(printf '%s\n' "$LEFT" | grep -c .)" = 1 ] || { echo "❌ expected exactly one image left"; exit 1; }
+
+      - name: Summary
+        run: |
+          {
+            echo "### Polaris Console image"
+            echo "- \`${{ steps.src.outputs.image }}:latest\` = \`${{ steps.push.outputs.digest }}\`"
+            echo "- built from apache/polaris-tools@\`${{ steps.src.outputs.sha }}\` (\`${{ inputs.ref }}\`)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  rollout:
+    name: Restart the console
+    needs: build
+    if: ${{ inputs.rollout }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: v1.30.0
+
+      - name: Setup Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TAILSCALE_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          tags: tag:git
+
+      - name: Write Kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          printf '%s' "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          chmod 600 ~/.kube/config
+          grep -q "server:" ~/.kube/config || { echo "❌ KUBECONFIG secret empty or invalid"; exit 1; }
+
+      - name: Roll out
+        env:
+          DIGEST: ${{ needs.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if ! kubectl get deployment/polaris-console -n polaris >/dev/null 2>&1; then
+            echo "▸ polaris-console isn't deployed yet: the next polaris apply pulls :latest"
+            exit 0
+          fi
+          kubectl rollout restart deployment/polaris-console -n polaris
+          kubectl rollout status deployment/polaris-console -n polaris --timeout=5m
+          RUNNING="$(kubectl get pods -n polaris -l app.kubernetes.io/name=polaris-console \
+            -o jsonpath='{.items[0].status.containerStatuses[0].imageID}')"
+          echo "▸ running ${RUNNING}"
+          case "$RUNNING" in
+            *"$DIGEST") echo "✅ the console runs the new image" ;;
+            *) echo "⚠️ the console runs ${RUNNING}, not ${DIGEST} — is the package public?" ;;
+          esac
