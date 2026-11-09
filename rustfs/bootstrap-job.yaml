@@ -27,10 +27,14 @@ spec:
       # with their logs once backoffLimit is hit).
       restartPolicy: Never
       # Steps run in order; each must succeed before the next starts:
-      #   1. bootstrap         default bucket + S3 table bucket (bootstrap.sh)
-      #   2. iam               BeziSync policy + RustFS user (iam.sh)
-      #   3. bezisync-register create the BeziSync destination if missing
-      #                        (skips without a token / when it exists)
+      #   1. bootstrap         `datalake` table bucket (every node) + plain
+      #                        `lakehouse` bucket (bootstrap.sh)
+      #   2. iam               RustFS policies + users for BeziSync and
+      #                        Lakekeeper (iam.sh)
+      #   3. lakekeeper-setup  bootstrap Lakekeeper + `lakehouse` warehouse
+      #                        if missing (setup-lakekeeper.py)
+      #   4. bezisync-register create the BeziSync destinations if missing
+      #                        (skips when they exist / BeziSync is absent)
       initContainers:
         - name: bootstrap
           # curl >= 7.76 is required for --aws-sigv4 (pinned 8.x)
@@ -86,6 +90,16 @@ spec:
                 secretKeyRef:
                   name: rustfs-bezisync
                   key: secret-key
+            - name: LAKEKEEPER_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-lakekeeper
+                  key: access-key
+            - name: LAKEKEEPER_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-lakekeeper
+                  key: secret-key
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -108,6 +122,48 @@ spec:
               readOnly: true
             - name: rc-home
               mountPath: /home/rc
+        - name: lakekeeper-setup
+          image: python:3.13.18-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-I", "/bezisync/setup-lakekeeper.py"]
+          envFrom:
+            - configMapRef:
+                name: rustfs-bootstrap-config   # LAKEHOUSE_BUCKET, AWS_DEFAULT_REGION
+            - configMapRef:
+                name: rustfs-bezisync-config    # LAKEKEEPER_URL/_WAREHOUSE, endpoint
+          env:
+            - name: PYTHONUNBUFFERED
+              value: '1'
+            - name: LAKEKEEPER_S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-lakekeeper
+                  key: access-key
+            - name: LAKEKEEPER_S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-lakekeeper
+                  key: secret-key
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534   # nobody
+            runAsGroup: 65534
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: bezisync
+              mountPath: /bezisync
+              readOnly: true
       containers:
         - name: bezisync-register
           image: python:3.13.18-alpine
