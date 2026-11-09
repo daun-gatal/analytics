@@ -157,14 +157,14 @@ analytics/                     # repo root for manifests (this dir)
 │   ├── namespace.yaml               # Namespace/rustfs
 │   ├── helm.yaml                    # chart values (distributed 4x1, longhorn)
 │   ├── bootstrap-config.yaml        # rustfs-bootstrap-config: bootstrap.sh + RUSTFS_ENDPOINT/BUCKET_NAME
-│   ├── bezisync-config.yaml         # RustFS policies, iam.sh, register-bezisync.py (datalake) + knobs
-│   └── bootstrap-job.yaml           # Job/rustfs-bootstrap — buckets, BeziSync/Polaris users, datalake destination, per apply
+│   ├── iam-config.yaml              # rustfs-iam-config: RustFS policies + iam.sh (users bezisync, polaris)
+│   └── bootstrap-job.yaml           # Job/rustfs-bootstrap — buckets, BeziSync/Polaris users, per apply
 ├── polaris/                   # Apache Polaris Iceberg REST catalog (chart 1.8.0)
 │   ├── kustomization.yaml           # Namespace/polaris + helmCharts (repo downloads.apache.org/polaris)
 │   ├── namespace.yaml               # Namespace/polaris
 │   ├── helm.yaml                    # chart values: relational-jdbc, token key, RustFS keys, schema + realm bootstrap init containers
 │   ├── postgres.yaml                # polaris-db: headless Service + Postgres 18 StatefulSet (metastore)
-│   ├── setup-config.yaml            # polaris-setup-config: setup-polaris.py, register-bezisync.py (lakehouse) + knobs
+│   ├── setup-config.yaml            # polaris-setup-config: setup-polaris.py + knobs
 │   ├── setup-job.yaml               # Job/polaris-setup — catalog, roles, principals, lakehouse destination, per apply
 │   └── console.yaml                 # Polaris Console (CI-built image) + /api/ forwarding to Polaris, tailnet `polaris-console`
 ├── maintenance/               # Iceberg table maintenance (Spark local-mode CronJobs)
@@ -276,7 +276,7 @@ The `polaris/` module runs [Apache Polaris](https://polaris.apache.org) **1.8.0*
 * **In DuckDB / Metabase:** duckdb attaches it as catalog **`lakehouse`** (`POLARIS_URL` / `POLARIS_CATALOG` in `duckdb-settings`, credentials from `Secret/polaris-duckdb`). The init container signs in and probes `…/v1/config?warehouse=lakehouse` for up to 90 s, then writes either the `ATTACH` or a no-op that `init.sql` `.read`s, so a Polaris outage never keeps duckdb (and `datalake`) down. The client secret stays in env: the `ATTACH` reads it with `getenv()`. DuckDB renews its token by itself when it expires. After `polaris-setup`, CI restarts duckdb once unless every duckdb pod's init log says `Polaris catalog … will be attached`. Query it over DuckFlight with **dbname `lakehouse`**, i.e. Metabase database **`Lakehouse`**.
 * **Why:** a real REST catalog gives upserts and table format v3 (BeziSync's RustFS preset is append-only, v2), avoids the built-in catalog's node-sync issue above, and Polaris adds per-client permissions without an extra identity provider or authorization service.
 * **Bootstrap:** two init containers on the Polaris pod run on every start, before the server: `CREATE SCHEMA IF NOT EXISTS polaris_schema`, then the admin tool's realm `bootstrap` (prints `already bootstrapped; skipping` after the first time). Polaris never starts against an un-bootstrapped database.
-* **Setup:** `Job/polaris-setup` (every polaris/all apply) creates or updates the catalog, its roles and grants, and the principals. It pins each principal's credentials to its Secret, verifies every principal end to end, then registers the BeziSync `lakehouse` destination. The bucket and Polaris's RustFS user come from `Job/rustfs-bootstrap`.
+* **Setup:** `Job/polaris-setup` (every polaris/all apply) creates or updates the catalog, its roles and grants, and the principals. It pins each principal's credentials to its Secret, and verifies every principal end to end. The bucket and Polaris's RustFS user come from `Job/rustfs-bootstrap`.
 * **Secrets:** CI generates once, never rotated: `polaris-db` (must keep matching the volume), `polaris-root` (fixed at the realm's first bootstrap), `polaris-token-key` (signs access tokens; a fixed key keeps tokens valid across restarts), `polaris-duckdb`, `polaris-bezisync`, and `rustfs-polaris` (ns `rustfs`, copied to `polaris`).
 * **Console:** [Polaris Console](https://polaris.apache.org/tools/polaris-console/) at **`http://polaris-console`** (tailnet). Log in as principal **`admin`**:
   ```bash
@@ -286,25 +286,18 @@ The `polaris/` module runs [Apache Polaris](https://polaris.apache.org) **1.8.0*
   * **Image:** upstream (`apache/polaris-tools`, `console/`) has never released one. CI builds it from the commit pinned as the `polaris-console` image tag in `polaris/kustomization.yaml`, the only place the pin lives. It's pushed as `ghcr.io/daun-gatal/analytics/polaris-console:<commit>` and built only when that tag isn't on GHCR yet. To update, set a newer polaris-tools commit (full sha) there. The first push creates the package **private**: flip it to public once, like the other two images. The console is unreleased upstream `main`, so expect rough edges.
   * **One origin:** the app runs in the browser and calls the Polaris API itself. The console's nginx forwards `/api/` to Polaris in-cluster (`polaris-console-proxy` ConfigMap), and the app is pointed at its own URL. The browser never talks to Polaris directly: no CORS, and Polaris stays off the tailnet. The forwarded API still needs a principal's OAuth2 token.
   * Anyone on the tailnet reaches the login page; only `admin`'s credentials get further.
-* Validated in a scratch namespace (2026-11-10, Polaris 1.8.0 + RustFS 1.0.4): rerunnable bootstrap and setup; PyIceberg 0.10.0 as `bezisync` create, append and add-column, with drop table/namespace denied; `duckdb` read with create denied; no credentials vended; DuckDB 2.0.0 `ATTACH` with token renewal across expiry; BeziSync draft check of the `lakehouse` destination: Ready.
+* Validated in a scratch namespace (2026-11-10, Polaris 1.8.0 + RustFS 1.0.4): rerunnable bootstrap and setup; PyIceberg 0.10.0 as `bezisync` create, append and add-column, with drop table/namespace denied; `duckdb` read with create denied; no credentials vended; DuckDB 2.0.0 `ATTACH` with token renewal across expiry; BeziSync draft check of the Polaris destination (same config the lab registers as `analytics-lakehouse`): Ready.
 
-## BeziSync destinations (auto-registered)
+## BeziSync access
 
-Two deploy-time Jobs wire the lake into [BeziSync](https://github.com/daun-gatal/bezisync) (CDC on Debezium Server), each registering the destination for the catalog its module owns:
+[BeziSync](https://github.com/daun-gatal/bezisync) (CDC on Debezium Server) writes into both catalogs. This repo gives it **access** and nothing else. The BeziSync **destinations** themselves are registered by [bezisync-lab](https://github.com/daun-gatal/bezisync-lab) in its Playground project, with templates **Shop → Analytics lake** and **Shop → Analytics lakehouse**. Its `playground.sh apply` reads the credentials below from the cluster and skips the lake's destinations when this stack isn't deployed. Deploy this repo first, then (re-)run the lab's apply.
 
-1. **`iam`** (`Job/rustfs-bootstrap`, `rustfs/rc` image, `rustfs/bezisync-config.yaml`): upserts the RustFS policies and users. `bezisync` (policy `bezisync-iceberg`) gets Iceberg catalog actions and objects on `datalake`, plus plain object access on `lakehouse`, with no drop/rename and no other bucket. `polaris` gets objects on `lakehouse` only. CI generates their secrets once in-cluster.
-2. **`bezisync-register`**, in both Jobs: creates the destination in BeziSync project **`playground`** if it doesn't exist yet (`managed: true`, namespace `cdc`), then runs BeziSync's readiness check:
+| BeziSync destination (bezisync-lab) | Catalog | Access from this repo | Secret |
+|---|---|---|---|
+| `analytics-lake` | RustFS built-in, `datalake` table bucket (append-only change log, v2) | RustFS user `bezisync` (policy `bezisync-iceberg`) | `rustfs-bezisync` (ns `rustfs`) |
+| `analytics-lakehouse` | Polaris, catalog `lakehouse` (upserts / deletes, v2 or v3) | Polaris principal `bezisync` (`lakehouse.writer`) for the catalog, RustFS user `bezisync` for data files | `polaris-bezisync` (ns `polaris`) + `rustfs-bezisync` |
 
-   | Destination | Registered by | Catalog | Writes |
-   |---|---|---|---|
-   | `rustfs-lake` | `Job/rustfs-bootstrap` (`rustfs/bezisync-config.yaml`) | RustFS built-in, `datalake` table bucket (preset *RustFS S3 Tables (preview)*) | append-only change log, v2 |
-   | `lakehouse` | `Job/polaris-setup` (`polaris/setup-config.yaml`) | Polaris, catalog `lakehouse` (preset *Iceberg REST catalog*, OAuth2 as principal `bezisync`) | upserts / deletes, v2 or v3 |
-
-   * **No token needed:** it signs in as BeziSync's **bootstrap admin**. On every run CI copies that login from BeziSync's own `bezisync/bezisync-secrets` (`BEZISYNC_BOOTSTRAP_ADMIN_PASSWORD`; email from the Secret or the api Deployment's env, else BeziSync's default `admin@bezisync.local`) into `Secret/bezisync-login` (ns `rustfs` and `polaris`). The Job signs out when done.
-   * **Skips** each connection that already exists (it is never modified), or everything when BeziSync isn't installed (no login Secret).
-   * BeziSync unreachable, or the bootstrap admin can't sign in (its password was changed in the UI) → warning, the deploy continues. Unknown project or a rejected config → the Job, and the deploy, fail. The log lists any readiness check that didn't pass.
-
-Knobs: `rustfs-bezisync-config` (`BEZISYNC_API_URL`, `BEZISYNC_PROJECT`, `BEZISYNC_CONNECTION_NAME`, `BEZISYNC_ICEBERG_NAMESPACE`) and `polaris-setup-config` (the same plus `BEZISYNC_LAKEHOUSE_CONNECTION_NAME`, `POLARIS_CLUSTER_URL`, `RUSTFS_CLUSTER_ENDPOINT`).
+`Job/rustfs-bootstrap`'s **`iam`** container (`rustfs/rc` image, `rustfs/iam-config.yaml`) upserts the RustFS policies and users on every apply. `bezisync` gets Iceberg catalog actions and objects on `datalake`, plus plain object access on `lakehouse`, with no drop/rename and no other bucket. `polaris` gets objects on `lakehouse` only. CI generates their secrets once in-cluster. `Job/polaris-setup` keeps the Polaris principal `bezisync` pinned to `polaris-bezisync`.
 
 ## Iceberg table maintenance
 
@@ -371,7 +364,7 @@ kubectl logs -f job/generator-manual -n analytics
 | Metabase database | DuckFlight dbname | Catalog |
 |---|---|---|
 | `Lake` | `datalake` | RustFS built-in catalog (`datalake` table bucket): generator / maintenance tables |
-| `Lakehouse` | `lakehouse` | Polaris (`lakehouse` bucket): BeziSync's `lakehouse` destination |
+| `Lakehouse` | `lakehouse` | Polaris (`lakehouse` bucket): tables of BeziSync's `analytics-lakehouse` destination |
 
 (`METABASE_DATABASES` in `metabase/register-config.yaml`.)
 
@@ -473,9 +466,9 @@ Required GitHub Secrets:
 
 * No Secret manifests are stored in the repo — CI creates/updates them from GitHub Secrets on every run (`kubectl create secret ... --dry-run=client -o yaml | kubectl apply -f -`)
 * Exception: `metabase-secrets` is generated in-cluster (`openssl rand`) only when absent and never overwritten — no GitHub Secret, and deliberately not rotatable by re-running CI
-* Also generated once: `metabase-admin` (ns `analytics`, the Metabase admin the register Job sets up and signs in as) and `rustfs-bezisync` (ns `rustfs`, the RustFS user BeziSync writes with). `bezisync-login` (ns `rustfs`) is not generated: CI copies it from BeziSync's bootstrap admin on every run.
-* Rotating `rustfs-bezisync`: delete the Secret, re-apply `module=rustfs` (the Job upserts the user with the new key), then update the secret access key on both BeziSync connections (`rustfs-lake` and `lakehouse`; CI re-copies the Secret to ns `polaris` on every run); the registration skips existing connections, so it won't update it for you
-* Rotating a Polaris principal (`polaris-duckdb` / `polaris-bezisync` / `polaris-admin`): delete the Secret and re-apply `module=polaris`. `Job/polaris-setup` resets the principal to the new pair. Then restart duckdb (`action=restart module=duckdb`), update the client secret on BeziSync's `lakehouse` connection, or log in to the console with the new `admin` secret
+* Also generated once: `metabase-admin` (ns `analytics`, the Metabase admin the register Job sets up and signs in as) and `rustfs-bezisync` (ns `rustfs`, the RustFS user BeziSync writes with).
+* Rotating `rustfs-bezisync`: delete the Secret, re-apply `module=rustfs` (the Job upserts the user with the new key), then re-run bezisync-lab's playground apply, which updates its `analytics-lake` and `analytics-lakehouse` destinations with the new key
+* Rotating a Polaris principal (`polaris-duckdb` / `polaris-bezisync` / `polaris-admin`): delete the Secret and re-apply `module=polaris`. `Job/polaris-setup` resets the principal to the new pair. Then restart duckdb (`action=restart module=duckdb`), re-run bezisync-lab's playground apply (for `polaris-bezisync`), or log in to the console with the new `admin` secret
 * Rotate: update the GitHub Secret, run this workflow with `action=apply`, then `action=restart` with `module=duckdb` (rustfs picks up creds on its own restart)
 
 ## Maintenance Notes

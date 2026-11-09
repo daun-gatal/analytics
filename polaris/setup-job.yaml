@@ -9,7 +9,7 @@ metadata:
 spec:
   # A failed ensure should surface as a failed Job, not retry forever.
   backoffLimit: 3
-  # Polaris startup (≤10m wait in setup-polaris.py) + setup + registration
+  # Polaris startup (≤10m wait in setup-polaris.py) + setup
   activeDeadlineSeconds: 1200
   # The next polaris/all apply re-creates it, so every deploy re-verifies
   # the catalog, grants and principal credentials.
@@ -23,12 +23,9 @@ spec:
       # Never (not OnFailure): a failed attempt keeps its pod, so CI's
       # wait_job can still print why it failed.
       restartPolicy: Never
-      # Steps run in order; each must succeed before the next starts:
-      #   1. catalog           catalog `lakehouse`, roles, grants, principals
-      #                        (setup-polaris.py)
-      #   2. bezisync-register BeziSync destination `lakehouse` if missing
-      #                        (skips when it exists / BeziSync is absent)
-      initContainers:
+      # catalog `lakehouse`, roles, grants, principals (setup-polaris.py).
+      # The BeziSync `analytics-lakehouse` destination is registered by bezisync-lab.
+      containers:
         - name: catalog
           image: python:3.13.18-alpine
           imagePullPolicy: IfNotPresent
@@ -79,7 +76,7 @@ spec:
                 secretKeyRef:
                   name: polaris-admin
                   key: client-secret
-          securityContext: &sc
+          securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
@@ -88,65 +85,13 @@ spec:
             capabilities:
               drop:
                 - ALL
-          resources: &res
+          resources:
             requests:
               cpu: 10m
               memory: 32Mi
             limits:
               cpu: 200m
               memory: 128Mi
-          volumeMounts:
-            - name: setup
-              mountPath: /setup
-              readOnly: true
-      containers:
-        - name: bezisync-register
-          image: python:3.13.18-alpine
-          imagePullPolicy: IfNotPresent
-          command: ["python", "-I", "/setup/register-bezisync.py"]
-          envFrom:
-            - configMapRef:
-                name: polaris-setup-config
-          env:
-            - name: PYTHONUNBUFFERED
-              value: '1'
-            - name: POLARIS_BEZISYNC_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: polaris-bezisync
-                  key: client-id
-            - name: POLARIS_BEZISYNC_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: polaris-bezisync
-                  key: client-secret
-            # BeziSync's RustFS user, copied by CI from ns rustfs
-            - name: BEZISYNC_ACCESS_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rustfs-bezisync
-                  key: access-key
-            - name: BEZISYNC_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: rustfs-bezisync
-                  key: secret-key
-            # BeziSync's bootstrap admin, copied by CI from BeziSync's own
-            # Secret (no Secret -> BeziSync not installed -> skip)
-            - name: BEZISYNC_LOGIN_EMAIL
-              valueFrom:
-                secretKeyRef:
-                  name: bezisync-login
-                  key: email
-                  optional: true
-            - name: BEZISYNC_LOGIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: bezisync-login
-                  key: password
-                  optional: true
-          securityContext: *sc
-          resources: *res
           volumeMounts:
             - name: setup
               mountPath: /setup

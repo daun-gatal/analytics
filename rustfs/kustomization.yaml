@@ -4,7 +4,7 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - bootstrap-config.yaml
-  - bezisync-config.yaml
+  - iam-config.yaml
   - bootstrap-job.yaml
 
 helmCharts:

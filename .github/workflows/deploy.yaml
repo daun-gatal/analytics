@@ -338,9 +338,10 @@ jobs:
               --from-literal=password="Mb-$(openssl rand -hex 16)"
           fi
           # RustFS user for BeziSync (policy bezisync-iceberg, see
-          # rustfs/bezisync-config.yaml): generated in-cluster ONCE. The
-          # rustfs-bootstrap Job upserts the user with it on every apply and
-          # hands it to BeziSync when it creates the destination.
+          # rustfs/iam-config.yaml): generated in-cluster ONCE. The
+          # rustfs-bootstrap Job upserts the user with it on every apply.
+          # bezisync-lab reads it (with polaris-bezisync) when it registers
+          # the lake's BeziSync destinations.
           if ! kubectl get secret rustfs-bezisync -n rustfs >/dev/null 2>&1; then
             echo "→ generating secret/rustfs-bezisync (first deploy)"
             kubectl create secret generic rustfs-bezisync -n rustfs \
@@ -382,32 +383,12 @@ jobs:
           #   kubectl get secret polaris-admin -n polaris -o jsonpath='{.data.client-secret}' | base64 -d
           gen_secret polaris polaris-admin client-id=admin client-secret="$(openssl rand -hex 24)"
           copy_secret rustfs-polaris rustfs polaris      # Polaris's metadata writes
-          copy_secret rustfs-bezisync rustfs polaris     # BeziSync `lakehouse` destination
           copy_secret polaris-duckdb polaris analytics   # duckdb ATTACH lakehouse
-          # BeziSync login for Job/rustfs-bootstrap and Job/polaris-setup:
-          # copy the bootstrap admin from BeziSync's own Secret (ns bezisync).
-          # Re-copied every run, so a rotated bootstrap password follows;
-          # no BeziSync install -> Secret removed -> registration skipped.
-          BZ_NS=bezisync; BZ_SECRET=bezisync-secrets
-          BZ_PASS="$(kubectl get secret "$BZ_SECRET" -n "$BZ_NS" -o jsonpath='{.data.BEZISYNC_BOOTSTRAP_ADMIN_PASSWORD}' 2>/dev/null | base64 -d 2>/dev/null || true)"
-          if [ -n "$BZ_PASS" ]; then
-            # email: Secret key, else the api Deployment's env, else BeziSync's default
-            BZ_EMAIL="$(kubectl get secret "$BZ_SECRET" -n "$BZ_NS" -o jsonpath='{.data.BEZISYNC_BOOTSTRAP_ADMIN_EMAIL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
-            [ -n "$BZ_EMAIL" ] || BZ_EMAIL="$(kubectl get deploy bezisync-api -n "$BZ_NS" -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="BEZISYNC_BOOTSTRAP_ADMIN_EMAIL")].value}' 2>/dev/null || true)"
-            [ -n "$BZ_EMAIL" ] || BZ_EMAIL=admin@bezisync.local
-            echo "→ BeziSync found: registration will sign in as ${BZ_EMAIL}"
-            for NS in rustfs polaris; do
-              kubectl create secret generic bezisync-login -n "$NS" \
-                --from-literal=email="${BZ_EMAIL}" \
-                --from-literal=password="${BZ_PASS}" \
-                --dry-run=client -o yaml | kubectl apply -f -
-            done
-          else
-            echo "→ no BeziSync bootstrap admin in ${BZ_NS}/${BZ_SECRET}: registration will skip"
-            kubectl delete secret bezisync-login -n rustfs --ignore-not-found
-            kubectl delete secret bezisync-login -n polaris --ignore-not-found
-          fi
-          unset BZ_PASS
+          # BeziSync destinations are registered by bezisync-lab now: drop the
+          # admin-login copies earlier deploys left for the registration Jobs.
+          for NS in rustfs polaris; do
+            kubectl delete secret bezisync-login -n "$NS" --ignore-not-found
+          done
 
       - name: Kustomize Build
         run: |
@@ -470,18 +451,16 @@ jobs:
               kubectl apply -f /tmp/built.yaml
               case "$TARGET" in
                 "."|all|rustfs)
-                  # `datalake` table bucket + plain `lakehouse` bucket, the
-                  # BeziSync/Polaris RustFS users, and the `datalake` BeziSync
-                  # destination (skips when it exists or BeziSync isn't
-                  # installed) — rustfs/bootstrap-job.yaml
-                  wait_job rustfs rustfs-bootstrap 1800 "buckets + BeziSync/Polaris users + datalake destination"
+                  # `datalake` table bucket + plain `lakehouse` bucket and the
+                  # BeziSync/Polaris RustFS users — rustfs/bootstrap-job.yaml
+                  wait_job rustfs rustfs-bootstrap 1800 "buckets + BeziSync/Polaris users"
                   ;;
               esac
               case "$TARGET" in
                 "."|all|polaris)
-                  # catalog `lakehouse`, roles, grants, principals, and the
-                  # `lakehouse` BeziSync destination — polaris/setup-job.yaml
-                  wait_job polaris polaris-setup 1200 "lakehouse catalog + principals + lakehouse destination"
+                  # catalog `lakehouse`, roles, grants, principals —
+                  # polaris/setup-job.yaml
+                  wait_job polaris polaris-setup 1200 "lakehouse catalog + principals"
                   # duckdb attaches the Polaris `lakehouse` catalog only if it
                   # was reachable when the pod started (duckdb/configmap.yaml).
                   # Restart duckdb once, now that the Job above ensured the

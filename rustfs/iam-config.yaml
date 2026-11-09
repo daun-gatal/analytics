@@ -1,0 +1,166 @@
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: rustfs-iam-config
+  namespace: rustfs
+data:
+  #
+  # RustFS IAM for the lake's clients, run by the rustfs-bootstrap Job
+  # after the buckets are ready (see bootstrap-job.yaml):
+  #
+  #   iam.sh  (container `iam`, rustfs/rc image)
+  #     upsert the least-privilege policies below and their users.
+  #     `rc admin policy create` / `user add` are upserts, so every deploy
+  #     re-applies these policies.
+  #
+  # Users (Secrets in ns rustfs, generated once by CI, never rotated, and
+  # copied by CI to the namespaces using them):
+  #   rustfs-bezisync  `bezisync` (policy bezisync-iceberg): an Iceberg
+  #                    writer for BeziSync. The BeziSync destinations
+  #                    themselves are registered by bezisync-lab
+  #                    (github.com/daun-gatal/bezisync-lab), which reads
+  #                    this Secret at apply time.
+  #   rustfs-polaris   `polaris` (policy polaris-warehouse): Polaris's own
+  #                    metadata writes on `lakehouse`.
+  # iam.sh signs in with the root keys in rustfs-credentials (GitHub
+  # RUSTFS_* secrets).
+  #
+  RUSTFS_CLUSTER_ENDPOINT: http://rustfs-svc.rustfs.svc.cluster.local:9000
+  BEZISYNC_RUSTFS_POLICY: bezisync-iceberg
+  POLARIS_RUSTFS_POLICY: polaris-warehouse
+
+  # BeziSync's RustFS user. Least privilege for an Iceberg writer:
+  #  - `datalake` table bucket (RustFS built-in catalog): catalog discovery,
+  #    namespace/table create, commits, metadata + data files. No
+  #    drop/rename, no other bucket. Validated on RustFS 1.0.4 (2026-11-09):
+  #    pyiceberg create/append/scan/add-column pass; drop table/namespace and
+  #    other buckets are denied. The discovery statement is required —
+  #    without it GET /iceberg/v1/config is denied.
+  #  - `lakehouse` bucket (Polaris catalog): plain object access only —
+  #    the catalog itself is Polaris, which vends no credentials.
+  bezisync-policy.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "IcebergCatalogDiscovery",
+          "Effect": "Allow",
+          "Action": [
+            "admin:GetTableCatalog",
+            "admin:GetTableBucket"
+          ],
+          "Resource": [
+            "arn:aws:s3:::datalake",
+            "arn:aws:s3:::datalake/*"
+          ]
+        },
+        {
+          "Sid": "IcebergCatalogWrite",
+          "Effect": "Allow",
+          "Action": [
+            "admin:GetTableNamespace",
+            "admin:SetTableNamespace",
+            "admin:GetTable",
+            "admin:CreateTable",
+            "admin:CommitTable",
+            "admin:GetTableMetadata",
+            "admin:SetTableMetadata",
+            "admin:GetTableMetadataLocation"
+          ],
+          "Resource": [
+            "arn:aws:s3:::datalake",
+            "arn:aws:s3:::datalake/*"
+          ]
+        },
+        {
+          "Sid": "LakeBucket",
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetBucketLocation",
+            "s3:ListBucket",
+            "s3:ListBucketMultipartUploads"
+          ],
+          "Resource": [
+            "arn:aws:s3:::datalake",
+            "arn:aws:s3:::lakehouse"
+          ]
+        },
+        {
+          "Sid": "LakeObjects",
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject",
+            "s3:AbortMultipartUpload",
+            "s3:ListMultipartUploadParts"
+          ],
+          "Resource": [
+            "arn:aws:s3:::datalake/*",
+            "arn:aws:s3:::lakehouse/*"
+          ]
+        }
+      ]
+    }
+
+  # Polaris's own RustFS user: the storage credential it uses to write
+  # table metadata. Object access on `lakehouse` only.
+  polaris-policy.json: |
+    {
+      "Version": "2012-10-17",
+      "Statement": [
+        {
+          "Sid": "WarehouseBucket",
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetBucketLocation",
+            "s3:ListBucket",
+            "s3:ListBucketMultipartUploads"
+          ],
+          "Resource": [
+            "arn:aws:s3:::lakehouse"
+          ]
+        },
+        {
+          "Sid": "WarehouseObjects",
+          "Effect": "Allow",
+          "Action": [
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject",
+            "s3:AbortMultipartUpload",
+            "s3:ListMultipartUploadParts"
+          ],
+          "Resource": [
+            "arn:aws:s3:::lakehouse/*"
+          ]
+        }
+      ]
+    }
+
+  iam.sh: |
+    #!/bin/sh
+    # Ensure the RustFS policies + users for BeziSync and Polaris.
+    # Idempotent (upserts).
+    set -eu
+    : "${RUSTFS_ACCESS_KEY:?rustfs-credentials missing}"
+    : "${RUSTFS_SECRET_KEY:?rustfs-credentials missing}"
+    : "${BEZISYNC_ACCESS_KEY:?rustfs-bezisync missing access-key}"
+    : "${BEZISYNC_SECRET_KEY:?rustfs-bezisync missing secret-key}"
+    : "${POLARIS_S3_ACCESS_KEY:?rustfs-polaris missing access-key}"
+    : "${POLARIS_S3_SECRET_KEY:?rustfs-polaris missing secret-key}"
+
+    rc alias set lake "${RUSTFS_CLUSTER_ENDPOINT}" "${RUSTFS_ACCESS_KEY}" "${RUSTFS_SECRET_KEY}" >/dev/null
+
+    ensure_user() {   # ensure_user <policy> <policy-file> <user> <secret>
+        echo "▶ Ensuring policy '$1' + user '$3'"
+        rc admin policy create lake "$1" "$2" >/dev/null
+        rc admin user add lake "$3" "$4" >/dev/null
+        rc admin policy attach lake "$1" --user "$3" >/dev/null
+        rc admin user info lake "$3" | grep -E "Status|Policies"
+        echo "✅ RustFS user '$3' ready with policy '$1'"
+    }
+    ensure_user "${BEZISYNC_RUSTFS_POLICY}" /iam/bezisync-policy.json \
+        "${BEZISYNC_ACCESS_KEY}" "${BEZISYNC_SECRET_KEY}"
+    ensure_user "${POLARIS_RUSTFS_POLICY}" /iam/polaris-policy.json \
+        "${POLARIS_S3_ACCESS_KEY}" "${POLARIS_S3_SECRET_KEY}"
