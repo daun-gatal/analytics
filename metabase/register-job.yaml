@@ -1,0 +1,83 @@
+# Set up Metabase (when fresh) and register DuckDB after every metabase
+# apply (skip-if-exists), signed in as the admin from Secret/metabase-admin.
+# Like rustfs-bootstrap, CI deletes the previous Job before each apply (Job
+# specs are immutable) and waits for this one; the ttl GCs it afterwards.
+kind: Job
+apiVersion: batch/v1
+metadata:
+  name: metabase-register
+  namespace: analytics
+  labels:
+    app.kubernetes.io/name: metabase-register
+    app.kubernetes.io/component: metabase
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 1200
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: metabase-register
+        app.kubernetes.io/component: metabase
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: register
+          image: python:3.13.18-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-I", "/register/register-duckdb.py"]
+          envFrom:
+            - configMapRef:
+                name: metabase-register-config
+          env:
+            - name: PYTHONUNBUFFERED
+              value: '1'
+            - name: DUCKFLIGHT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: duckflight-auth
+                  key: username
+            - name: DUCKFLIGHT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: duckflight-auth
+                  key: password
+            # Metabase admin the Job sets up / signs in as (generated once
+            # by CI; no Secret -> registration is skipped)
+            - name: METABASE_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-admin
+                  key: email
+                  optional: true
+            - name: METABASE_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: metabase-admin
+                  key: password
+                  optional: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65534   # nobody
+            runAsGroup: 65534
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            - name: register
+              mountPath: /register
+              readOnly: true
+      volumes:
+        - name: register
+          configMap:
+            name: metabase-register-config
+            defaultMode: 0555

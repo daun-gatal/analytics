@@ -11,3 +11,5 @@ resources:
   - postgres.yaml
   - deployment.yaml
   - service.yaml
+  - register-config.yaml
+  - register-job.yaml
