@@ -41,13 +41,22 @@ spec:
         app.kubernetes.io/name: metabase-db
         app.kubernetes.io/component: metabase
     spec:
-      # Run as the image's postgres user (uid/gid 70 in -alpine) from the
-      # start. As root, docker-entrypoint.sh re-execs itself through gosu to
-      # drop privileges — and gosu 1.19 hangs forever under this cluster's
-      # runtime (k3s/containerd 2.3: PID 1 stuck in gosu, no log output,
-      # liveness kills it). Non-root, the entrypoint skips gosu entirely.
-      # fsGroup makes the Longhorn volume writable for gid 70.
+      # Run as the image's postgres user (uid/gid 70 in -alpine): no root,
+      # and docker-entrypoint.sh skips its gosu privilege drop. fsGroup
+      # makes the Longhorn volume writable for gid 70.
+      #
+      # AppArmor Unconfined: on this node (Ubuntu 26.04, AppArmor 5.0.2,
+      # since 2026-11-07) container processes carry the STACKED label
+      # `cri-containerd.apparmor.d//&unconfined`, which containerd's default
+      # profile doesn't list as a signal peer — so every signal between
+      # processes in the container is denied (kernel log:
+      # apparmor="DENIED" operation="signal" … peer="…//&unconfined").
+      # Postgres needs signals between its own processes (latches,
+      # postmaster<->backends): logins hang in "authentication" and
+      # pg_isready never answers. Drop this once the node profile is fixed.
       securityContext:
+        appArmorProfile:
+          type: Unconfined
         runAsUser: 70
         runAsGroup: 70
         fsGroup: 70
