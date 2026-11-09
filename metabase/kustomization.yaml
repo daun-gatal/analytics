@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Metabase — BI on top of DuckDB/DuckFlight (Postgres wire, :5433).
+#
+# Secret/metabase-secrets (db-password, encryption-key) is NOT a manifest:
+# CI generates it once, on the first apply, and never rotates it — a new
+# encryption-key would make every stored connection (the DuckFlight login)
+# undecryptable. See "Create Secrets" in .github/workflows/deploy.yaml.
+resources:
+  - postgres.yaml
+  - deployment.yaml
+  - service.yaml

@@ -1,0 +1,19 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: metabase
+  namespace: analytics
+  labels:
+    app.kubernetes.io/name: metabase
+    app.kubernetes.io/component: metabase
+  annotations:
+    tailscale.com/expose: 'true'
+    tailscale.com/hostname: metabase
+spec:
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: http
+  selector:
+    app.kubernetes.io/name: metabase

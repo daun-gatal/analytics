@@ -13,6 +13,7 @@ on:
           - rustfs
           - maintenance
           - generator
+          - metabase
         default: all
       action:
         description: 'Kubectl Action'
@@ -35,6 +36,16 @@ on:
         required: false
         type: boolean
         default: false
+      tailscale_expose:
+        description: 'Also expose on Tailscale (metabase always is). Applies per run: an apply without it removes the exposure'
+        required: false
+        type: choice
+        default: none
+        options:
+          - none
+          - duckdb
+          - rustfs
+          - all
   workflow_call:
     inputs:
       module:
@@ -47,6 +58,10 @@ on:
         required: false
         type: boolean
         default: false
+      tailscale_expose:
+        required: false
+        type: string
+        default: none
 
 
 jobs:
@@ -184,6 +199,7 @@ jobs:
     env:
       MODULE_PATH: ${{ inputs.module == 'all' && '.' || inputs.module }}
       K8S_ACTION: ${{ inputs.action }}
+      TAILSCALE_EXPOSE: ${{ inputs.tailscale_expose || 'none' }}
       RUSTFS_ACCESS_KEY: ${{ secrets.RUSTFS_ACCESS_KEY }}
       RUSTFS_SECRET_KEY: ${{ secrets.RUSTFS_SECRET_KEY }}
       DUCKFLIGHT_USER: ${{ secrets.DUCKFLIGHT_USER }}
@@ -192,8 +208,8 @@ jobs:
       - name: Validate module
         run: |
           case "${MODULE_PATH}" in
-            .|duckdb|rustfs|maintenance|generator) ;;
-            *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs, maintenance, generator)" && exit 1 ;;
+            .|duckdb|rustfs|maintenance|generator|metabase) ;;
+            *) echo "❌ Invalid module '${MODULE_PATH}' (allowed: all, duckdb, rustfs, maintenance, generator, metabase)" && exit 1 ;;
           esac
 
       - uses: actions/checkout@v4
@@ -258,12 +274,24 @@ jobs:
             --from-literal=username="${DUCKFLIGHT_USER}" \
             --from-literal=password="${DUCKFLIGHT_PASSWORD}" \
             --dry-run=client -o yaml | kubectl apply -f -
+          # Metabase: app-DB password + encryption key, generated in-cluster
+          # ONCE and never re-applied. No GitHub Secret needed. Rotating
+          # encryption-key would make Metabase's stored connections (the
+          # DuckFlight login) undecryptable; a new db-password would no
+          # longer match the already-initialised Postgres volume.
+          if ! kubectl get secret metabase-secrets -n analytics >/dev/null 2>&1; then
+            echo "→ generating secret/metabase-secrets (first deploy)"
+            kubectl create secret generic metabase-secrets -n analytics \
+              --from-literal=db-password="$(openssl rand -hex 24)" \
+              --from-literal=encryption-key="$(openssl rand -hex 32)"
+          fi
 
       - name: Kustomize Build
         run: |
-          echo "▶ Building ${MODULE_PATH}"
-          # --enable-helm is required: rustfs/ inflates the rustfs helm chart via the helm binary
-          kubectl kustomize --enable-helm "${MODULE_PATH}" > /tmp/built.yaml
+          echo "▶ Building ${MODULE_PATH} (tailscale_expose=${TAILSCALE_EXPOSE})"
+          # kubectl kustomize --enable-helm (rustfs/ inflates a helm chart),
+          # plus the tailscale/<svc> components picked by tailscale_expose
+          bash scripts/build-manifests.sh "${MODULE_PATH}" "${TAILSCALE_EXPOSE}" > /tmp/built.yaml
           echo "Built $(grep -c "^kind:" /tmp/built.yaml) resources"
           head -n 80 /tmp/built.yaml
 
@@ -341,7 +369,7 @@ jobs:
               # space-joined string that word-split into broken invocations.
               case "$TARGET" in
                 "."|all)
-                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics" "deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics")
+                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics" "deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics" "deployment/metabase -n analytics")
                   ;;
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
                 rustfs) TARGETS=("statefulset/rustfs -n rustfs") ;;
@@ -349,6 +377,7 @@ jobs:
                 generator)
                   TARGETS=("deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics")
                   ;;
+                metabase) TARGETS=("deployment/metabase -n analytics") ;;
                 *) TARGETS=("$TARGET") ;;
               esac
               for OBJ in "${TARGETS[@]}"; do
@@ -368,6 +397,7 @@ jobs:
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
                 rustfs) TARGETS=("statefulset/rustfs -n rustfs" "job/rustfs-bootstrap -n rustfs") ;;
                 generator) TARGETS=("deployment/generator-stream -n analytics") ;;
+                metabase) TARGETS=("deployment/metabase -n analytics" "statefulset/metabase-db -n analytics") ;;
                 # maintenance has no long-running pod — its evidence lives in
                 # the cronjob status + job listings below.
                 maintenance) TARGETS=() ;;

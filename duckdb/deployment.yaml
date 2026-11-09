@@ -54,7 +54,7 @@ spec:
               mountPath: /config
       containers:
         - name: duckdb
-          image: duckdb/duckdb:1.5.5
+          image: duckdb/duckdb:2.0.0
           command:
             - /duckdb
           args:

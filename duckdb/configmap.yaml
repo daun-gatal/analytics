@@ -167,7 +167,7 @@ data:
     -- to 85% of the live request on every pod (re)start. Without it DuckDB
     -- defaults to 80% of node RAM — the container sets no memory limit.
     --
-    -- Two DuckDB quirks this works around (verified against 1.5.5):
+    -- Two DuckDB quirks this works around (verified against 1.5.5 and 2.0.0):
     --   * SET accepts runtime functions since 0.10.0 (PR #9809), but
     --     memory_limit must carry a unit suffix — an integer alone fails
     --     with "Unknown unit for memory: ''", so the byte count is
@@ -184,6 +184,11 @@ data:
     --
     -- RustFS S3 credentials — all values read from the container env
     --
+    -- DuckDB 2.0 quirk: secret options only accept function calls and
+    -- casts at the top level — a bare comparison (=, IN, CASE) fails
+    -- with "Unrecognized expression type EQUAL". Wrapping it in CAST
+    -- keeps the env-driven boolean (verified for http and https on 2.0.0).
+    --
     CREATE SECRET rustfs_s3 (
         TYPE s3,
         KEY_ID getenv('RUSTFS_ACCESS_KEY'),
@@ -191,7 +196,7 @@ data:
         REGION getenv('RUSTFS_REGION'),
         ENDPOINT getenv('RUSTFS_ENDPOINT_HOST') || ':' || getenv('RUSTFS_ENDPOINT_PORT'),
         URL_STYLE 'path',
-        USE_SSL getenv('RUSTFS_PROTOCOL') = 'https'
+        USE_SSL CAST(getenv('RUSTFS_PROTOCOL') = 'https' AS BOOLEAN)
     );
 
     -- RustFS Iceberg REST catalog
@@ -199,9 +204,10 @@ data:
     -- DuckDB grammar limitation: the catalog path ('datalake') and its alias
     -- must be SQL literals — they cannot read env. Everything else is
     -- env-driven; the endpoint is derived from the deployed rustfs Service.
+    -- (URI, not ENDPOINT: DuckDB 2.0 deprecated the ENDPOINT attach option.)
     ATTACH 'datalake' AS datalake (
         TYPE ICEBERG,
-        ENDPOINT getenv('RUSTFS_PROTOCOL') || '://' ||
+        URI getenv('RUSTFS_PROTOCOL') || '://' ||
                   getenv('RUSTFS_ENDPOINT_HOST') || ':' ||
                   getenv('RUSTFS_ENDPOINT_PORT') || '/iceberg',
         AUTHORIZATION_TYPE 'SIGV4',
