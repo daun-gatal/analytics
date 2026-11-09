@@ -306,6 +306,23 @@ jobs:
               --from-literal=access-key=bezisync \
               --from-literal=secret-key="$(openssl rand -hex 24)"
           fi
+          # Lakekeeper (rustfs/lakekeeper.yaml): its Postgres password +
+          # secret-store encryption key, and its own RustFS user (policy
+          # lakekeeper-warehouse, s3://lakehouse only). Generated ONCE:
+          # encryption-key protects the warehouse credential stored in
+          # Lakekeeper's DB, and db-password must keep matching the volume.
+          if ! kubectl get secret lakekeeper-secrets -n rustfs >/dev/null 2>&1; then
+            echo "→ generating secret/lakekeeper-secrets (first deploy)"
+            kubectl create secret generic lakekeeper-secrets -n rustfs \
+              --from-literal=db-password="$(openssl rand -hex 24)" \
+              --from-literal=encryption-key="$(openssl rand -hex 32)"
+          fi
+          if ! kubectl get secret rustfs-lakekeeper -n rustfs >/dev/null 2>&1; then
+            echo "→ generating secret/rustfs-lakekeeper (first deploy)"
+            kubectl create secret generic rustfs-lakekeeper -n rustfs \
+              --from-literal=access-key=lakekeeper \
+              --from-literal=secret-key="$(openssl rand -hex 24)"
+          fi
           # BeziSync login for the rustfs-bootstrap Job: copy the bootstrap
           # admin from BeziSync's own Secret (ns bezisync) — no API token.
           # Re-copied every run, so a rotated bootstrap password follows;
@@ -389,7 +406,7 @@ jobs:
                   # default bucket + table bucket, the BeziSync RustFS user,
                   # and the BeziSync destination (skips when it exists or
                   # BeziSync isn't installed) — rustfs/bootstrap-job.yaml
-                  wait_job rustfs rustfs-bootstrap 1800 "table bucket on every node + BeziSync user/destination"
+                  wait_job rustfs rustfs-bootstrap 1800 "buckets + Lakekeeper warehouse + BeziSync users/destinations"
                   ;;
               esac
               case "$TARGET" in
@@ -423,10 +440,10 @@ jobs:
               # space-joined string that word-split into broken invocations.
               case "$TARGET" in
                 "."|all)
-                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics" "deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics" "deployment/metabase -n analytics")
+                  TARGETS=("deployment/duckdb -n analytics" "statefulset/rustfs -n rustfs" "deployment/lakekeeper -n rustfs" "cronjob/iceberg-maintenance-daily -n analytics" "deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics" "deployment/metabase -n analytics")
                   ;;
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
-                rustfs) TARGETS=("statefulset/rustfs -n rustfs") ;;
+                rustfs) TARGETS=("statefulset/rustfs -n rustfs" "deployment/lakekeeper -n rustfs") ;;
                 maintenance) TARGETS=("cronjob/iceberg-maintenance-daily -n analytics") ;;
                 generator)
                   TARGETS=("deployment/generator-stream -n analytics" "cronjob/generator-batch -n analytics")
@@ -449,7 +466,7 @@ jobs:
               case "$TARGET" in
                 "."|all) TARGETS=("deployment/duckdb -n analytics" "deployment/generator-stream -n analytics") ;;
                 duckdb) TARGETS=("deployment/duckdb -n analytics") ;;
-                rustfs) TARGETS=("statefulset/rustfs -n rustfs" "job/rustfs-bootstrap -n rustfs") ;;
+                rustfs) TARGETS=("statefulset/rustfs -n rustfs" "deployment/lakekeeper -n rustfs" "job/rustfs-bootstrap -n rustfs") ;;
                 generator) TARGETS=("deployment/generator-stream -n analytics") ;;
                 metabase) TARGETS=("deployment/metabase -n analytics" "statefulset/metabase-db -n analytics") ;;
                 # maintenance has no long-running pod — its evidence lives in

@@ -27,6 +27,9 @@ data:
   RUSTFS_PORT: '9000'
   RUSTFS_REPLICAS: '4'
   BUCKET_NAME: datalake
+  # Plain bucket (NOT table-enabled) for the Lakekeeper warehouse — its
+  # catalog is Lakekeeper (lakekeeper.yaml), not RustFS's built-in one.
+  LAKEHOUSE_BUCKET: lakehouse
   AWS_DEFAULT_REGION: us-east-1
   bootstrap.sh: |
     #!/bin/sh
@@ -134,16 +137,17 @@ data:
         fi
     }
 
-    create_bucket() {
-        _code="$(http PUT "/${BUCKET_NAME}")"
+    create_bucket() {   # create_bucket [bucket] (default: BUCKET_NAME)
+        _bucket="${1:-${BUCKET_NAME}}"
+        _code="$(http PUT "/${_bucket}")"
         case "${_code}" in
             200|201)
-                echo "✅ Bucket '${BUCKET_NAME}' created"
+                echo "✅ Bucket '${_bucket}' created"
                 ;;
             409)
                 # BucketAlreadyOwnedByYou — created between our runs;
                 # the desired end state is reached either way.
-                echo "✅ Bucket '${BUCKET_NAME}' already exists (409 on create)"
+                echo "✅ Bucket '${_bucket}' already exists (409 on create)"
                 ;;
             *)
                 echo "  CreateBucket returned ${_code:-transport-error}" >&2
@@ -203,6 +207,12 @@ data:
     echo "▶ Verifying table bucket state"
     if ! with_retries 6 verify_state; then
         echo "❌ Table bucket state verification failed" >&2
+        exit 1
+    fi
+
+    echo "▶ Ensuring Lakekeeper warehouse bucket '${LAKEHOUSE_BUCKET}' exists (plain S3)"
+    if ! with_retries 6 create_bucket "${LAKEHOUSE_BUCKET}"; then
+        echo "❌ Could not ensure bucket '${LAKEHOUSE_BUCKET}'" >&2
         exit 1
     fi
 

@@ -72,6 +72,8 @@ flowchart LR
     SETTINGS -. env .-> MAINT
     MAINT == "Iceberg REST SIGV4 + S3 FileIO" ==> RSVC
     RSVC --> STS
+    LK["Deployment/lakekeeper v0.15.0<br/>Iceberg REST :8181/catalog<br/>warehouse lakehouse"] == "S3 (lakekeeper user)" ==> RSVC
+    LK --> LKDB[("StatefulSet/lakekeeper-db<br/>Postgres 18 · longhorn 5Gi")]
 ```
 
 * DuckDB pods are **disposable** — the only state is in the lake. The HPA scales `duckdb` 1→3 on CPU pressure; the VPA owns memory sizing (2–6Gi, `InPlaceOrRecreate` — request raises resize the pod in place, no restart), and each pod re-derives its `memory_limit` from the request at start.
@@ -119,7 +121,8 @@ flowchart TD
 | Namespaces | `analytics` (duckdb, metabase) · `rustfs` (object store) |
 | DuckDB endpoints | `5433` Postgres wire · `31337` Arrow Flight SQL |
 | RustFS endpoint | `rustfs-svc.rustfs.svc.cluster.local:9000` (S3 + Iceberg REST `/iceberg`) |
-| Default bucket | `datalake` — created and enabled as an S3 table bucket by `Job/rustfs-bootstrap` on every rustfs/all apply |
+| Default bucket | `datalake` — created and enabled as an S3 table bucket by `Job/rustfs-bootstrap` on every rustfs/all apply (RustFS built-in catalog) |
+| Lakehouse bucket | `lakehouse` — plain bucket, catalog = **Lakekeeper** v0.15.0 (`http://lakekeeper.rustfs.svc.cluster.local:8181/catalog`, warehouse `lakehouse`) |
 | Object storage | RustFS chart v1.0.4, distributed mode 4 pods × 1 drive, Longhorn 10Gi per pod |
 | Scaling | duckdb: HPA 1–3 replicas (CPU 65%) + VPA memory 2–6Gi (InPlaceOrRecreate) — `memory_limit` = 85% × request via the Downward API |
 | Exposure | Tailscale: `metabase` always; `duckdb` / `rustfs` opt-in per deploy (`tailscale_expose`) |
@@ -148,8 +151,9 @@ analytics/                     # repo root for manifests (this dir)
 │   ├── namespace.yaml               # Namespace/rustfs
 │   ├── helm.yaml                    # chart values (distributed 4x1, longhorn)
 │   ├── bootstrap-config.yaml        # rustfs-bootstrap-config: bootstrap.sh + RUSTFS_ENDPOINT/BUCKET_NAME
-│   ├── bezisync-config.yaml         # BeziSync policy, iam.sh, register-bezisync.py + knobs
-│   └── bootstrap-job.yaml           # Job/rustfs-bootstrap — bucket + S3 Tables, BeziSync user + destination, per apply
+│   ├── bezisync-config.yaml         # RustFS policies, iam.sh, setup-lakekeeper.py, register-bezisync.py + knobs
+│   ├── lakekeeper.yaml              # Lakekeeper (Iceberg REST catalog) + its Postgres
+│   └── bootstrap-job.yaml           # Job/rustfs-bootstrap — buckets, users, Lakekeeper warehouse, BeziSync destinations, per apply
 ├── maintenance/               # Iceberg table maintenance (Spark local-mode CronJobs)
 │   ├── kustomization.yaml           # pins the CI-built ghcr.io image
 │   ├── configmap.yaml               # maintenance-config: maintenance.py + MAINT_* tunables
@@ -240,17 +244,35 @@ kubectl logs -f job/rustfs-bootstrap -n rustfs
 
 DuckDB's `ATTACH 'datalake'` and the generators' `create_namespace_if_not_exists` need nothing else — Iceberg namespaces and tables self-heal on first write.
 
-## BeziSync destination (auto-registered)
+## Lakekeeper catalog (`lakehouse` warehouse)
 
-The same `rustfs-bootstrap` Job, after the bucket steps, wires the lake into [BeziSync](https://github.com/daun-gatal/bezisync) (CDC on Debezium Server). Config and scripts live in `rustfs/bezisync-config.yaml`:
+`rustfs/lakekeeper.yaml` runs [Lakekeeper](https://docs.lakekeeper.io) **v0.15.0**, an Iceberg REST catalog, in ns `rustfs` with its own Postgres (`lakekeeper-db`, Longhorn 5Gi). It serves the warehouse **`lakehouse`** on the plain bucket **`s3://lakehouse`**. RustFS is just object storage there. The older `datalake` table bucket keeps RustFS's built-in catalog, untouched.
 
-1. **`iam`** (`rustfs/rc` image): upserts the RustFS policy `bezisync-iceberg` and user `bezisync`. The policy is least-privilege: Iceberg catalog discovery, namespace/table create, commits and data files on the `datalake` bucket only, with no drop/rename and no other bucket. The user's secret is `Secret/rustfs-bezisync`, which CI generates once in-cluster.
-2. **`bezisync-register`**: creates the **Apache Iceberg / RustFS** destination `rustfs-lake` in BeziSync project **`playground`** (`managed: true`, namespace `cdc` → tables land in `datalake.cdc.*`), then runs BeziSync's readiness check.
+* **Catalog URI:** `http://lakekeeper.rustfs.svc.cluster.local:8181/catalog`, warehouse `lakehouse`. Use it from PyIceberg, Spark, DuckDB (`ATTACH 'lakehouse' AS lakehouse (TYPE ICEBERG, URI '…/catalog', AUTHORIZATION_TYPE 'none')` plus an S3 secret) or BeziSync.
+* **Why:** a real REST catalog gives upserts and table format v3 (BeziSync's RustFS preset is append-only, v2), and avoids the built-in catalog's node-sync issue above.
+* **Auth:** none (authz allow-all). Any pod in the cluster can use the catalog. Lakekeeper vends **no** credentials (STS and remote signing are off), so every client reads and writes data files with its own scoped RustFS user.
+* **Setup:** `Job/rustfs-bootstrap` creates the bucket, Lakekeeper's RustFS user (`lakekeeper`, policy `lakekeeper-warehouse`: object access on `lakehouse` only), bootstraps Lakekeeper once, and creates the warehouse if it's missing.
+* **Secrets:** CI generates `lakekeeper-secrets` (DB password + secret-store encryption key) and `rustfs-lakekeeper` once, never rotated. The encryption key protects the warehouse storage credential kept in Lakekeeper's DB.
+* Validated locally (2026-11-09): Lakekeeper read-only as UID 65532, warehouse creation with the scoped user; as the `bezisync` user, PyIceberg create, append, **upsert** and scan; DuckDB 2.0.0 reads through Lakekeeper.
+
+## BeziSync destinations (auto-registered)
+
+After the bucket steps, the same `rustfs-bootstrap` Job wires the lake into [BeziSync](https://github.com/daun-gatal/bezisync) (CDC on Debezium Server). Config and scripts live in `rustfs/bezisync-config.yaml`:
+
+1. **`iam`** (`rustfs/rc` image): upserts the RustFS policies and users. `bezisync` (policy `bezisync-iceberg`) gets Iceberg catalog actions and objects on `datalake`, plus plain object access on `lakehouse`, with no drop/rename and no other bucket. `lakekeeper` gets objects on `lakehouse` only. CI generates their secrets once in-cluster.
+2. **`lakekeeper-setup`**: bootstraps Lakekeeper and creates the `lakehouse` warehouse if it's missing (see above).
+3. **`bezisync-register`**: creates each destination in BeziSync project **`playground`** that doesn't exist yet (`managed: true`, namespace `cdc`), then runs BeziSync's readiness check:
+
+   | Destination | Catalog | Writes |
+   |---|---|---|
+   | `rustfs-lake` | RustFS built-in, `datalake` table bucket (preset *RustFS S3 Tables (preview)*) | append-only change log, v2 |
+   | `lakehouse` | Lakekeeper, `lakehouse` warehouse (preset *Iceberg REST catalog*, auth none) | upserts / deletes, v2 or v3 |
+
    * **No token needed:** it signs in as BeziSync's **bootstrap admin**. On every run CI copies that login from BeziSync's own `bezisync/bezisync-secrets` (`BEZISYNC_BOOTSTRAP_ADMIN_PASSWORD`; email from the Secret or the api Deployment's env, else BeziSync's default `admin@bezisync.local`) into `Secret/bezisync-login` (ns `rustfs`). The Job signs out when done.
-   * **Skips** when the connection already exists (it is never modified), or when BeziSync isn't installed (no login Secret).
+   * **Skips** each connection that already exists (it is never modified), or everything when BeziSync isn't installed (no login Secret).
    * BeziSync unreachable, or the bootstrap admin can't sign in (its password was changed in the UI) → warning, the deploy continues. Unknown project or a rejected config → the Job, and the deploy, fail. The log lists any readiness check that didn't pass.
 
-Knobs (`rustfs-bezisync-config`): `BEZISYNC_API_URL`, `BEZISYNC_PROJECT`, `BEZISYNC_CONNECTION_NAME`, `BEZISYNC_ICEBERG_NAMESPACE`. The RustFS preset is preview-only: pipelines must use **Rows: "Every change appended"** and table format v2.
+Knobs (`rustfs-bezisync-config`): `BEZISYNC_API_URL`, `BEZISYNC_PROJECT`, `BEZISYNC_CONNECTION_NAME`, `BEZISYNC_LAKEHOUSE_CONNECTION_NAME`, `BEZISYNC_ICEBERG_NAMESPACE`, `LAKEKEEPER_URL`, `LAKEKEEPER_WAREHOUSE`.
 
 ## Iceberg table maintenance
 
