@@ -33,7 +33,7 @@ on:
           - trigger
           - repair
       force_rebuild:
-        description: 'Rebuild all images even if unchanged since last push'
+        description: 'Rebuild all images (incl. the Polaris Console) even if unchanged since last push'
         required: false
         type: boolean
         default: false
@@ -111,20 +111,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Polaris Console: upstream (apache/polaris-tools) publishes no image.
-      # The polaris-tools commit to build is the image tag pinned in
-      # polaris/kustomization.yaml, the single place it lives.
-      - name: Read Polaris Console pin
-        id: console
-        run: |
-          REF="$(awk '/name: polaris-console/ {f=1} f && /newTag:/ {print $2; exit}' polaris/kustomization.yaml)"
-          if ! printf '%s' "$REF" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "❌ polaris-console newTag in polaris/kustomization.yaml must be a full 40-char commit sha (got '${REF}')"
-            exit 1
-          fi
-          echo "▸ Polaris Console pin: apache/polaris-tools@${REF}"
-          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
-
       # Skip an image's build when GHCR already has it: the registry has
       # a :sha tag for a commit whose image-input files are identical to
       # HEAD (two imagetools probes minimum, usually one per image).
@@ -137,10 +123,9 @@ jobs:
           REPO="${GITHUB_REPOSITORY,,}"
 
           if [ "${{ inputs.force_rebuild }}" = "true" ]; then
-            echo "▸ force_rebuild — building all images"
+            echo "▸ force_rebuild — building both images"
             echo "maintenance=1" >> "$GITHUB_OUTPUT"
             echo "generator=1" >> "$GITHUB_OUTPUT"
-            echo "console=1" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -180,16 +165,6 @@ jobs:
           # yaml (manifests don't end up in the image)
           gate generator generator -- generator ':(exclude)generator/*.yaml'
 
-          # console: tagged with the pinned upstream commit itself, so the
-          # tag existing on GHCR means that exact build is published
-          CONSOLE_REF="${{ steps.console.outputs.ref }}"
-          if docker buildx imagetools inspect "ghcr.io/${REPO}/polaris-console:${CONSOLE_REF}" >/dev/null 2>&1; then
-            echo "▸ console: polaris-console:${CONSOLE_REF:0:10} already published — skipping build"
-            echo "console=0" >> "$GITHUB_OUTPUT"
-          else
-            echo "▸ console: no polaris-console:${CONSOLE_REF:0:10} on GHCR — building"
-            echo "console=1" >> "$GITHUB_OUTPUT"
-          fi
 
       - name: Build and push
         if: ${{ steps.changes.outputs.maintenance != '0' }}
@@ -215,27 +190,90 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Built straight from the pinned upstream commit (git context, the
-      # console/ subdirectory) with upstream's own Dockerfile.
+  build-console:
+    # Polaris Console image. Upstream (apache/polaris-tools, console/)
+    # publishes none, so it is built here from the polaris-tools commit
+    # pinned as the polaris-console image tag in polaris/kustomization.yaml
+    # (the single place the pin lives) and pushed as
+    # ghcr.io/<repo>/polaris-console:<commit> — a PUBLIC package (the first
+    # push creates it private: flip it once).
+    #
+    # Its own job, in parallel with build-image: it only needs the pin, and
+    # only deploys of the console wait for it (module all/polaris; read-only
+    # actions skip it like build-image). The tag IS the pinned commit, so
+    # an existing tag means that exact build is published: skip, unless
+    # force_rebuild.
+    if: ${{ !(inputs.action == 'logs' || inputs.action == 'trigger' || inputs.action == 'sigprobe') && (inputs.module == 'all' || inputs.module == 'polaris') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: polaris/kustomization.yaml
+          sparse-checkout-cone-mode: false
+
+      - name: Read Polaris Console pin
+        id: pin
+        run: |
+          REF="$(awk '/name: polaris-console/ {f=1} f && /newTag:/ {print $2; exit}' polaris/kustomization.yaml)"
+          if ! printf '%s' "$REF" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "❌ polaris-console newTag in polaris/kustomization.yaml must be a full 40-char commit sha (got '${REF}')"
+            exit 1
+          fi
+          echo "▸ Polaris Console pin: apache/polaris-tools@${REF}"
+          echo "ref=${REF}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Detect image already published
+        id: changes
+        # fail-open: a registry glitch must never block a real build
+        continue-on-error: true
+        run: |
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/polaris-console:${{ steps.pin.outputs.ref }}"
+          if [ "${{ inputs.force_rebuild }}" = "true" ]; then
+            echo "▸ force_rebuild — building ${IMAGE}"
+            echo "build=1" >> "$GITHUB_OUTPUT"
+          elif docker buildx imagetools inspect "${IMAGE}" >/dev/null 2>&1; then
+            echo "▸ ${IMAGE} already published — skipping build"
+            echo "build=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "▸ ${IMAGE} not on GHCR yet — building"
+            echo "build=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Straight from the pinned upstream commit (git context, the console/
+      # subdirectory) with upstream's own Dockerfile.
       - name: Build and push Polaris Console
-        if: ${{ steps.changes.outputs.console != '0' }}
+        if: ${{ steps.changes.outputs.build != '0' }}
         uses: docker/build-push-action@v6
         with:
-          context: https://github.com/apache/polaris-tools.git#${{ steps.console.outputs.ref }}:console
+          context: https://github.com/apache/polaris-tools.git#${{ steps.pin.outputs.ref }}:console
           file: docker/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/polaris-console:${{ steps.console.outputs.ref }}
+            ghcr.io/${{ github.repository }}/polaris-console:${{ steps.pin.outputs.ref }}
           cache-from: type=gha,scope=polaris-console
           cache-to: type=gha,mode=max,scope=polaris-console
 
   execute:
-    needs: build-image
-    # always() + result check: build-image is skipped for read-only actions
-    # (logs/trigger/sigprobe) and execute must still run in that case —
-    # while a real build FAILURE still stops the pipeline. Change-gated
-    # builds (both steps skipped inside the job) still count as success.
-    if: ${{ always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped') }}
+    needs: [build-image, build-console]
+    # always() + result check: the build jobs are skipped for read-only
+    # actions (logs/trigger/sigprobe), build-console also for modules
+    # without the console, and execute must still run then — while a real
+    # build FAILURE in either still stops the pipeline. Change-gated builds
+    # (build steps skipped inside the job) still count as success.
+    if: ${{ always() && (needs.build-image.result == 'success' || needs.build-image.result == 'skipped') && (needs.build-console.result == 'success' || needs.build-console.result == 'skipped') }}
     runs-on: ubuntu-latest
     env:
       MODULE_PATH: ${{ inputs.module == 'all' && '.' || inputs.module }}

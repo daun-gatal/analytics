@@ -1,7 +1,7 @@
 # Polaris Console — web UI for Polaris (apache/polaris-tools, console/).
 #
 # Upstream publishes no image: CI builds it from the commit pinned as the
-# image tag in kustomization.yaml (build-image job, deploy.yaml) and pushes
+# image tag in kustomization.yaml (build-console job, deploy.yaml) and pushes
 # ghcr.io/daun-gatal/analytics/polaris-console:<commit>.
 #
 #   UI        http://polaris-console   (tailnet only)

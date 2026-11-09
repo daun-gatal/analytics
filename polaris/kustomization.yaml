@@ -21,7 +21,7 @@ helmCharts:
     valuesFile: helm.yaml
 
 images:
-  # Polaris Console, built by CI (build-image job, deploy.yaml) from
+  # Polaris Console, built by CI (build-console job, deploy.yaml) from
   # apache/polaris-tools at THIS commit: the tag is the pin. To update,
   # set a newer polaris-tools commit (full 40-char sha) here; CI builds it
   # when GHCR has no image with that tag yet. Published as a PUBLIC package
