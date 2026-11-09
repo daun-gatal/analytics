@@ -409,19 +409,20 @@ jobs:
                   wait_job rustfs rustfs-bootstrap 1800 "buckets + Lakekeeper warehouse + BeziSync users/destinations"
                   # duckdb attaches the Lakekeeper `lakehouse` warehouse only if
                   # it was reachable when the pod started (duckdb/configmap.yaml).
-                  # On a fresh deploy duckdb can start before the Job above
-                  # created the warehouse: its init container then logged
-                  # "starting without it" — restart duckdb once, now that the
-                  # warehouse exists. No restart when it's already attached.
+                  # Restart duckdb once, now that the Job above ensured the
+                  # warehouse, unless every duckdb pod's init container logged
+                  # "will be attached". That covers pods that started before
+                  # the warehouse existed AND pods still running an older init
+                  # script (ConfigMap edits don't roll pods by themselves).
                   if kubectl get deploy/duckdb -n analytics >/dev/null 2>&1; then
                     LH_MISSING=""
                     for POD in $(kubectl get pods -n analytics -l app=duckdb -o name); do
-                      if kubectl logs -n analytics "$POD" -c generate-duckflight-config 2>/dev/null | grep -q "starting without it"; then
+                      if ! kubectl logs -n analytics "$POD" -c generate-duckflight-config 2>/dev/null | grep -q "will be attached"; then
                         LH_MISSING=1
                       fi
                     done
                     if [ -n "$LH_MISSING" ]; then
-                      echo "▶ duckdb started without the lakehouse catalog — restarting it to attach"
+                      echo "▶ duckdb has no lakehouse catalog attached — restarting it to attach"
                       kubectl rollout restart deployment/duckdb -n analytics
                       kubectl rollout status deployment/duckdb -n analytics --timeout=300s || true
                     else
